@@ -48,6 +48,8 @@ public:
 
     void* data() const;
     size_t size() const { return m_size; }
+    size_t dagCacheSize() const { return m_DAGCache.size() * sizeof(uint32_t); }
+    size_t memorySize() const { return m_size + dagCacheSize(); }
     uint32_t epoch() const { return m_epoch; }
 
     const uint32_t* l1_cache() const { return m_DAGCache.data(); }

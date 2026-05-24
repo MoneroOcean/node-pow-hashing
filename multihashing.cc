@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <nan.h>
 #include <stdexcept>
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -62,8 +63,28 @@ struct KawpowCacheEntry {
     uint64_t last_used = 0;
 };
 
-constexpr size_t KAWPOW_CACHE_ENTRIES = 4;
+using KawpowCacheTime = std::chrono::steady_clock::time_point;
+
+struct KawpowCacheLookupStats {
+    bool created = false;
+    int64_t evicted_epoch = -1;
+    size_t trimmed_entries = 0;
+    size_t cache_capacity = 1;
+    size_t recent_epochs = 0;
+    size_t total_cache_size = 0;
+    size_t total_cache_memory_size = 0;
+};
+
+struct KawpowEpochAccess {
+    uint32_t epoch = 0;
+    KawpowCacheTime last_seen;
+};
+
+constexpr size_t KAWPOW_MIN_CACHE_ENTRIES = 1;
+constexpr size_t KAWPOW_MAX_CACHE_ENTRIES = 10;
+constexpr auto KAWPOW_CACHE_GROW_WINDOW = std::chrono::hours(1);
 std::vector<KawpowCacheEntry> kawpow_caches;
+std::vector<KawpowEpochAccess> kawpow_cache_epoch_accesses;
 uint64_t kawpow_cache_clock = 0;
 
 inline v8::Local<v8::String> NewString(v8::Isolate* isolate, const char* value) {
@@ -84,22 +105,91 @@ inline void SetArrayValue(v8::Isolate* isolate, v8::Local<v8::Array> target,
     target->Set(isolate->GetCurrentContext(), index, value).Check();
 }
 
-xmrig::KPCache* GetKawpowCache(uint32_t epoch, bool& created, int64_t& evicted_epoch, size_t& total_cache_size) {
-    created = false;
-    evicted_epoch = -1;
-    total_cache_size = 0;
+void PruneKawpowCacheEpochAccesses(KawpowCacheTime now) {
+    kawpow_cache_epoch_accesses.erase(
+        std::remove_if(
+            kawpow_cache_epoch_accesses.begin(),
+            kawpow_cache_epoch_accesses.end(),
+            [now](const KawpowEpochAccess& access) {
+                return now - access.last_seen > KAWPOW_CACHE_GROW_WINDOW;
+            }
+        ),
+        kawpow_cache_epoch_accesses.end()
+    );
+}
+
+void RecordKawpowCacheEpochAccess(uint32_t epoch, KawpowCacheTime now) {
+    for (KawpowEpochAccess& access : kawpow_cache_epoch_accesses) {
+        if (access.epoch == epoch) {
+            access.last_seen = now;
+            return;
+        }
+    }
+
+    kawpow_cache_epoch_accesses.push_back({ epoch, now });
+}
+
+size_t KawpowCacheCapacity() {
+    size_t capacity = kawpow_cache_epoch_accesses.size();
+    if (capacity < KAWPOW_MIN_CACHE_ENTRIES) capacity = KAWPOW_MIN_CACHE_ENTRIES;
+    if (capacity > KAWPOW_MAX_CACHE_ENTRIES) capacity = KAWPOW_MAX_CACHE_ENTRIES;
+    return capacity;
+}
+
+void UpdateKawpowCacheStats(KawpowCacheLookupStats& stats) {
+    stats.cache_capacity = KawpowCacheCapacity();
+    stats.recent_epochs = kawpow_cache_epoch_accesses.size();
+    stats.total_cache_size = 0;
+    stats.total_cache_memory_size = 0;
+
+    for (const KawpowCacheEntry& item : kawpow_caches) {
+        if (!item.cache) continue;
+        stats.total_cache_size += item.cache->size();
+        stats.total_cache_memory_size += item.cache->memorySize();
+    }
+}
+
+void TrimKawpowCaches(size_t capacity, const xmrig::KPCache* keep, KawpowCacheLookupStats& stats) {
+    while (kawpow_caches.size() > capacity) {
+        size_t victim = kawpow_caches.size();
+        for (size_t i = 0; i < kawpow_caches.size(); ++i) {
+            if (kawpow_caches[i].cache.get() == keep) continue;
+            if (victim == kawpow_caches.size() || kawpow_caches[i].last_used < kawpow_caches[victim].last_used) {
+                victim = i;
+            }
+        }
+
+        if (victim == kawpow_caches.size()) return;
+        if (stats.evicted_epoch == -1 && kawpow_caches[victim].cache) {
+            stats.evicted_epoch = static_cast<int64_t>(kawpow_caches[victim].cache->epoch());
+        }
+        kawpow_caches.erase(kawpow_caches.begin() + victim);
+        ++stats.trimmed_entries;
+    }
+}
+
+xmrig::KPCache* GetKawpowCache(uint32_t epoch, KawpowCacheLookupStats& stats) {
+    stats = {};
+    const auto now = std::chrono::steady_clock::now();
+    PruneKawpowCacheEpochAccesses(now);
     ++kawpow_cache_clock;
+
+    if (xmrig::KPCache::cache_size(epoch) == 0) return nullptr;
+    RecordKawpowCacheEpochAccess(epoch, now);
 
     for (KawpowCacheEntry& entry : kawpow_caches) {
         if (entry.cache && entry.cache->epoch() == epoch) {
             entry.last_used = kawpow_cache_clock;
-            for (const KawpowCacheEntry& item : kawpow_caches) total_cache_size += item.cache->size();
-            return entry.cache.get();
+            xmrig::KPCache* cache = entry.cache.get();
+            TrimKawpowCaches(KawpowCacheCapacity(), cache, stats);
+            UpdateKawpowCacheStats(stats);
+            return cache;
         }
     }
 
+    const size_t capacity = KawpowCacheCapacity();
     KawpowCacheEntry* entry = nullptr;
-    if (kawpow_caches.size() < KAWPOW_CACHE_ENTRIES) {
+    if (kawpow_caches.size() < capacity) {
         kawpow_caches.push_back({});
         entry = &kawpow_caches.back();
     }
@@ -108,16 +198,18 @@ xmrig::KPCache* GetKawpowCache(uint32_t epoch, bool& created, int64_t& evicted_e
         for (KawpowCacheEntry& item : kawpow_caches) {
             if (item.last_used < entry->last_used) entry = &item;
         }
-        evicted_epoch = entry->cache ? static_cast<int64_t>(entry->cache->epoch()) : -1;
+        stats.evicted_epoch = entry->cache ? static_cast<int64_t>(entry->cache->epoch()) : -1;
     }
 
     entry->cache = std::make_unique<xmrig::KPCache>();
     entry->last_used = kawpow_cache_clock;
-    created = true;
+    stats.created = true;
     if (!entry->cache->init(epoch)) return nullptr;
 
-    for (const KawpowCacheEntry& item : kawpow_caches) total_cache_size += item.cache->size();
-    return entry->cache.get();
+    xmrig::KPCache* cache = entry->cache.get();
+    TrimKawpowCaches(capacity, cache, stats);
+    UpdateKawpowCacheStats(stats);
+    return cache;
 }
 
 }  // namespace
@@ -945,15 +1037,13 @@ NAN_METHOD(kawpow_light) {
 
 	{
 		std::lock_guard<std::mutex> lock(xmrig::KPCache::s_cacheMutex);
-		bool created_cache = false;
-		int64_t evicted_epoch = -1;
-		size_t total_cache_size = 0;
+		KawpowCacheLookupStats cache_stats;
 		const auto start_time = std::chrono::steady_clock::now();
-		xmrig::KPCache* cache = GetKawpowCache(epoch, created_cache, evicted_epoch, total_cache_size);
+		xmrig::KPCache* cache = GetKawpowCache(epoch, cache_stats);
 		if (!cache) {
 			return THROW_ERROR_EXCEPTION("Unable to initialize KawPoW light cache for height");
 		}
-		if (created_cache) {
+		if (cache_stats.created) {
 			const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 				std::chrono::steady_clock::now() - start_time
 			).count();
@@ -961,12 +1051,17 @@ NAN_METHOD(kawpow_light) {
 				<< ": pid=" << getpid()
 				<< " height=" << height
 				<< " epoch=" << epoch
-				<< " evicted_epoch=" << evicted_epoch
+				<< " evicted_epoch=" << cache_stats.evicted_epoch
 				<< " cache_entries=" << kawpow_caches.size()
-				<< " max_cache_entries=" << KAWPOW_CACHE_ENTRIES
+				<< " cache_capacity=" << cache_stats.cache_capacity
+				<< " max_cache_entries=" << KAWPOW_MAX_CACHE_ENTRIES
+				<< " recent_epochs=" << cache_stats.recent_epochs
+				<< " trimmed_entries=" << cache_stats.trimmed_entries
 				<< " cache_size=" << cache->size()
-				<< " total_cache_size=" << total_cache_size
-				<< " l1_cache_size=" << xmrig::KPCache::l1_cache_size
+				<< " dag_cache_size=" << cache->dagCacheSize()
+				<< " cache_memory_size=" << cache->memorySize()
+				<< " total_cache_size=" << cache_stats.total_cache_size
+				<< " total_cache_memory_size=" << cache_stats.total_cache_memory_size
 				<< " elapsed_ms=" << elapsed_ms
 				<< std::endl;
 		}
