@@ -6,7 +6,9 @@
 #include <stdexcept>
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <unistd.h>
+#include <vector>
 
 #if defined(__ARM_ARCH)
   #define my_malloc(a, b) malloc(a)
@@ -55,6 +57,15 @@ int (*rx_blake2b)(void* out, size_t outlen, const void* in, size_t inlen) = rx_b
 
 namespace {
 
+struct KawpowCacheEntry {
+    std::unique_ptr<xmrig::KPCache> cache;
+    uint64_t last_used = 0;
+};
+
+constexpr size_t KAWPOW_CACHE_ENTRIES = 4;
+std::vector<KawpowCacheEntry> kawpow_caches;
+uint64_t kawpow_cache_clock = 0;
+
 inline v8::Local<v8::String> NewString(v8::Isolate* isolate, const char* value) {
     return v8::String::NewFromUtf8(isolate, value).ToLocalChecked();
 }
@@ -71,6 +82,42 @@ inline void SetExport(v8::Isolate* isolate, v8::Local<v8::Object> target,
 inline void SetArrayValue(v8::Isolate* isolate, v8::Local<v8::Array> target,
                           uint32_t index, v8::Local<v8::Value> value) {
     target->Set(isolate->GetCurrentContext(), index, value).Check();
+}
+
+xmrig::KPCache* GetKawpowCache(uint32_t epoch, bool& created, int64_t& evicted_epoch, size_t& total_cache_size) {
+    created = false;
+    evicted_epoch = -1;
+    total_cache_size = 0;
+    ++kawpow_cache_clock;
+
+    for (KawpowCacheEntry& entry : kawpow_caches) {
+        if (entry.cache && entry.cache->epoch() == epoch) {
+            entry.last_used = kawpow_cache_clock;
+            for (const KawpowCacheEntry& item : kawpow_caches) total_cache_size += item.cache->size();
+            return entry.cache.get();
+        }
+    }
+
+    KawpowCacheEntry* entry = nullptr;
+    if (kawpow_caches.size() < KAWPOW_CACHE_ENTRIES) {
+        kawpow_caches.push_back({});
+        entry = &kawpow_caches.back();
+    }
+    else {
+        entry = &kawpow_caches.front();
+        for (KawpowCacheEntry& item : kawpow_caches) {
+            if (item.last_used < entry->last_used) entry = &item;
+        }
+        evicted_epoch = entry->cache ? static_cast<int64_t>(entry->cache->epoch()) : -1;
+    }
+
+    entry->cache = std::make_unique<xmrig::KPCache>();
+    entry->last_used = kawpow_cache_clock;
+    created = true;
+    if (!entry->cache->init(epoch)) return nullptr;
+
+    for (const KawpowCacheEntry& item : kawpow_caches) total_cache_size += item.cache->size();
+    return entry->cache.get();
 }
 
 }  // namespace
@@ -898,27 +945,32 @@ NAN_METHOD(kawpow_light) {
 
 	{
 		std::lock_guard<std::mutex> lock(xmrig::KPCache::s_cacheMutex);
-		const uint32_t previous_epoch = xmrig::KPCache::s_cache.epoch();
-		const bool rebuilding_cache = previous_epoch != epoch;
+		bool created_cache = false;
+		int64_t evicted_epoch = -1;
+		size_t total_cache_size = 0;
 		const auto start_time = std::chrono::steady_clock::now();
-		if (!xmrig::KPCache::s_cache.init(epoch)) {
+		xmrig::KPCache* cache = GetKawpowCache(epoch, created_cache, evicted_epoch, total_cache_size);
+		if (!cache) {
 			return THROW_ERROR_EXCEPTION("Unable to initialize KawPoW light cache for height");
 		}
-		if (rebuilding_cache) {
+		if (created_cache) {
 			const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 				std::chrono::steady_clock::now() - start_time
 			).count();
 			std::cout << "KawPoW light cache rebuild"
 				<< ": pid=" << getpid()
 				<< " height=" << height
-				<< " previous_epoch=" << (previous_epoch == 0xFFFFFFFFUL ? -1 : static_cast<int64_t>(previous_epoch))
 				<< " epoch=" << epoch
-				<< " cache_size=" << xmrig::KPCache::s_cache.size()
+				<< " evicted_epoch=" << evicted_epoch
+				<< " cache_entries=" << kawpow_caches.size()
+				<< " max_cache_entries=" << KAWPOW_CACHE_ENTRIES
+				<< " cache_size=" << cache->size()
+				<< " total_cache_size=" << total_cache_size
 				<< " l1_cache_size=" << xmrig::KPCache::l1_cache_size
 				<< " elapsed_ms=" << elapsed_ms
 				<< std::endl;
 		}
-		xmrig::KPHash::calculate(xmrig::KPCache::s_cache, height, header_hash, nonce, output, mix_hash);
+		xmrig::KPHash::calculate(*cache, height, header_hash, nonce, output, mix_hash);
 	}
 
 	v8::Local<v8::Array> returnValue = v8::Array::New(isolate, 2);
