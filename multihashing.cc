@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <nan.h>
 #include <stdexcept>
+#include <chrono>
+#include <iostream>
+#include <unistd.h>
 
 #if defined(__ARM_ARCH)
   #define my_malloc(a, b) malloc(a)
@@ -895,8 +898,25 @@ NAN_METHOD(kawpow_light) {
 
 	{
 		std::lock_guard<std::mutex> lock(xmrig::KPCache::s_cacheMutex);
+		const uint32_t previous_epoch = xmrig::KPCache::s_cache.epoch();
+		const bool rebuilding_cache = previous_epoch != epoch;
+		const auto start_time = std::chrono::steady_clock::now();
 		if (!xmrig::KPCache::s_cache.init(epoch)) {
 			return THROW_ERROR_EXCEPTION("Unable to initialize KawPoW light cache for height");
+		}
+		if (rebuilding_cache) {
+			const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now() - start_time
+			).count();
+			std::cout << "KawPoW light cache rebuild"
+				<< ": pid=" << getpid()
+				<< " height=" << height
+				<< " previous_epoch=" << (previous_epoch == 0xFFFFFFFFUL ? -1 : static_cast<int64_t>(previous_epoch))
+				<< " epoch=" << epoch
+				<< " cache_size=" << xmrig::KPCache::s_cache.size()
+				<< " l1_cache_size=" << xmrig::KPCache::l1_cache_size
+				<< " elapsed_ms=" << elapsed_ms
+				<< std::endl;
 		}
 		xmrig::KPHash::calculate(xmrig::KPCache::s_cache, height, header_hash, nonce, output, mix_hash);
 	}
