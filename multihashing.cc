@@ -466,6 +466,7 @@ static xmrig::cn_hash_fun get_cn_fn(const int algo) {
     case 8:  return FNA(CN_2);
     case 9:  return FNA(CN_HALF);
     case 11: return FN(CN_GPU);
+    case 12: return FNA(CN_WOW);
     case 13: return FNA(CN_R);
     case 14: return FNA(CN_RWZ);
     case 15: return FNA(CN_ZLS);
