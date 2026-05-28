@@ -14,7 +14,7 @@ Native Node.js proof-of-work hashing bindings for MoneroOcean-style pool tooling
 </div>
 
 ## Overview
-`node-powhash` is a native addon for Node.js that exposes fast hashing helpers for CryptoNight variants, RandomX, KawPow, Ethash, Etchash, Cuckaroo29, Autolykos2, Ghostrider, Flex, Argon2, AstroBWT, and KangarooTwelve.
+`node-powhash` is a native addon for Node.js that exposes fast hashing helpers for CryptoNight variants, RandomX, KawPow, Ethash, Etchash, Cuckaroo29, Autolykos2, Ghostrider, Argon2, AstroBWT, and KangarooTwelve.
 
 It is meant for pool backends, miner-facing APIs, and other Node.js services that need deterministic PoW hashing without shelling out to an external binary.
 
@@ -71,7 +71,7 @@ Exact argument patterns and vector-backed examples live in [`tests/stability.js`
 | `c29*`, `c29_*packed_edges`, `c29_cycle_hash` | `number` or `Buffer` | Verification and packed-edge helpers for Cuckaroo29 variants. |
 
 ## Supported Families
-- CryptoNight: `cn/0`, `cn/1`, `cn/2`, `cn/r`, `cn/half`, `cn/fast`, `cn/xao`, `cn/rto`, `cn/gpu`, `cn/rwz`, `cn/zls`, `cn/double`, `cn/ccx`, `ghostrider`, `flex`
+- CryptoNight: `cn/0`, `cn/1`, `cn/2`, `cn/r`, `cn/half`, `cn/fast`, `cn/xao`, `cn/rto`, `cn/gpu`, `cn/rwz`, `cn/zls`, `cn/double`, `cn/ccx`, `ghostrider`
 - CryptoNight Light: `cn-lite/0`, `cn-lite/1`
 - CryptoNight Heavy and Pico: heavy, `xhv`, `tube`, `pico`
 - RandomX: `rx/0`, `rx/arq`, `rx/wow`, `rx/keva`, `rx/graft`, `rx/xeq`, plus the Scala/Panther path covered in the test suite
@@ -92,7 +92,7 @@ Exact argument patterns and vector-backed examples live in [`tests/stability.js`
 GitHub Actions runs the stability suite only, on Linux and macOS, with a small Node matrix to keep feedback fast.
 
 ## Contributors
-1. [MoneroOcean](https://github.com/MoneroOcean) for the long-running maintenance branch, major multi-algo expansion, C29 and Flex support, platform refreshes, security fixes, and the current stability-focused test direction
+1. [MoneroOcean](https://github.com/MoneroOcean) for the long-running maintenance branch, major multi-algo expansion, C29 support, platform refreshes, security fixes, and the current stability-focused test direction
 2. [XMRig](https://github.com/xmrig/xmrig) for the hashing implementations and low-level crypto/runtime code that power much of this addon
 3. [tevador](https://github.com/tevador) for the upstream RandomX work vendored into this binding and the hashing/runtime improvements that come with it
 4. Alexander Blair for the original public Node binding, early architecture, and foundational test and async work

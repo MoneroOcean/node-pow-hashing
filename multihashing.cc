@@ -36,7 +36,6 @@
 #include "crypto/kawpow/KPCache.h"
 #include "3rdparty/libethash/ethash.h"
 #include "crypto/ghostrider/ghostrider.h"
-#include "crypto/flex/flex.h"
 #include "crypto/ghostrider/sph_keccak.h"
 
 extern "C" {
@@ -458,12 +457,6 @@ void ghostrider(const unsigned char* data, size_t size, unsigned char* output, c
     xmrig::ghostrider::hash(data, size, output, ctx, nullptr);
 }
 
-void flex(const unsigned char* data, size_t size, unsigned char* output, cryptonight_ctx** ctx, uint64_t) {
-    hard_coded_eb = 6;
-    flex_hash((const char*)data, (char*)output, ctx);
-    hard_coded_eb = 1;
-}
-
 static xmrig::cn_hash_fun get_cn_fn(const int algo) {
   switch (algo) {
     case 0:  return FN(CN_0);
@@ -480,7 +473,6 @@ static xmrig::cn_hash_fun get_cn_fn(const int algo) {
     case 16: return FNA(CN_DOUBLE);
     case 17: return FNA(CN_CCX);
     case 18: return ghostrider;
-    case 19: return flex;
     default: return FN(CN_R);
   }
 }
@@ -548,6 +540,7 @@ NAN_METHOD(cryptonight) {
     }
 
     if ((algo == 12 || algo == 13) && !height_set) return THROW_ERROR_EXCEPTION("CryptonightR requires block template height as Argument 3");
+    if (algo == 19) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight algorithm");
 
     const xmrig::cn_hash_fun fn = get_cn_fn(algo);
 
