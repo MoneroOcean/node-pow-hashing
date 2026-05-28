@@ -800,9 +800,9 @@ void hash(const uint8_t* data, size_t size, uint8_t* output, cryptonight_ctx** c
     const CnHash::AlgoVariant* av = Cpu::info()->hasAES() ? av_hw_aes : av_soft_aes;
 
     const cn_hash_fun f[3] = {
-        CnHash::fn(cn_hash[cn_indices[0]], CnHash::AV_SINGLE, Assembly::AUTO),
-        CnHash::fn(cn_hash[cn_indices[1]], CnHash::AV_SINGLE, Assembly::AUTO),
-        CnHash::fn(cn_hash[cn_indices[2]], CnHash::AV_SINGLE, Assembly::AUTO),
+        CnHash::fn(cn_hash[cn_indices[0]], av[step[cn_indices[0]]], Assembly::AUTO),
+        CnHash::fn(cn_hash[cn_indices[1]], av[step[cn_indices[1]]], Assembly::AUTO),
+        CnHash::fn(cn_hash[cn_indices[2]], av[step[cn_indices[2]]], Assembly::AUTO),
     };
 
     uint8_t tmp[64 * N];
