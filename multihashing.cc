@@ -242,6 +242,8 @@ xmrig::KPCache* GetKawpowCache(uint32_t epoch, KawpowCacheLookupStats& stats) {
 
 
 const size_t max_mem_size = 20 * 1024 * 1024;
+constexpr size_t ghostrider_ctx_count = 8;
+constexpr size_t ghostrider_min_input_size = 36;
 xmrig::VirtualMemory mem(max_mem_size, true, false, 0, 4096);
 static struct cryptonight_ctx* ctx = nullptr;
 
@@ -277,7 +279,7 @@ static std::mutex etchash_mutex;
 
 struct InitCtx {
     InitCtx() {
-        xmrig::CnCtx::create(&ctx, static_cast<uint8_t*>(my_malloc(max_mem_size, 4096)), max_mem_size, 1);
+        xmrig::CnCtx::create(&ctx, static_cast<uint8_t*>(my_malloc(max_mem_size * ghostrider_ctx_count, 4096)), max_mem_size, ghostrider_ctx_count);
         for (int i = 0; i != rx_seed_cache_size; ++ i) memset(rx_seed_hash[i], 0xCC, sizeof(rx_seed_hash[0]));
     }
 } s;
@@ -540,6 +542,9 @@ NAN_METHOD(cryptonight) {
     }
 
     if ((algo == 12 || algo == 13) && !height_set) return THROW_ERROR_EXCEPTION("CryptonightR requires block template height as Argument 3");
+    if (algo == 18 && Buffer::Length(target) < ghostrider_min_input_size) {
+        return THROW_ERROR_EXCEPTION("GhostRider requires input length of at least 36 bytes");
+    }
     if (algo == 19) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight algorithm");
 
     const xmrig::cn_hash_fun fn = get_cn_fn(algo);
