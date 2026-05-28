@@ -10,6 +10,7 @@
 #include <memory>
 #include <unistd.h>
 #include <vector>
+#include <mutex>
 
 #if defined(__ARM_ARCH)
   #define my_malloc(a, b) malloc(a)
@@ -35,7 +36,6 @@
 #include "crypto/kawpow/KPCache.h"
 #include "3rdparty/libethash/ethash.h"
 #include "crypto/ghostrider/ghostrider.h"
-#include "crypto/flex/flex.h"
 #include "crypto/ghostrider/sph_keccak.h"
 
 extern "C" {
@@ -273,6 +273,10 @@ static uint8_t        rx_seed_hash[rx_seed_cache_size][32] = {0};
 static uint32_t       rx_seed_algo[rx_seed_cache_size]     = {0};
 static int            rx_active_cache_size                 = rx_seed_cache_size;
 
+static std::mutex randomx_mutex;
+static std::mutex ethash_mutex;
+static std::mutex etchash_mutex;
+
 struct InitCtx {
     InitCtx() {
         xmrig::CnCtx::create(&ctx, static_cast<uint8_t*>(my_malloc(max_mem_size * ghostrider_ctx_count, 4096)), max_mem_size, ghostrider_ctx_count);
@@ -281,7 +285,7 @@ struct InitCtx {
 } s;
 
 void init_rx(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) {
-    bool update_cache = false;
+    std::lock_guard<std::mutex> lock(randomx_mutex);
     const int rxid = rx2id(algo);
     assert(rxid < MAXRX);
 
@@ -435,7 +439,10 @@ NAN_METHOD(randomx) {
     }
 
     char output[32];
-    randomx_calculate_hash(rx_vm[rx2id(xalgo)], reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), xalgo);
+    {
+        std::lock_guard<std::mutex> lock(randomx_mutex);
+        randomx_calculate_hash(rx_vm[rx2id(xalgo)], reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), xalgo);
+    }
 
     v8::Local<v8::Value> returnValue = Nan::CopyBuffer(output, 32).ToLocalChecked();
     info.GetReturnValue().Set(returnValue);
@@ -450,12 +457,6 @@ NAN_METHOD(setRandomxCacheSize) {
 
 void ghostrider(const unsigned char* data, size_t size, unsigned char* output, cryptonight_ctx** ctx, uint64_t) {
     xmrig::ghostrider::hash(data, size, output, ctx, nullptr);
-}
-
-void flex(const unsigned char* data, size_t size, unsigned char* output, cryptonight_ctx** ctx, uint64_t) {
-    hard_coded_eb = 6;
-    flex_hash((const char*)data, (char*)output, ctx);
-    hard_coded_eb = 1;
 }
 
 static xmrig::cn_hash_fun get_cn_fn(const int algo) {
@@ -474,7 +475,6 @@ static xmrig::cn_hash_fun get_cn_fn(const int algo) {
     case 16: return FNA(CN_DOUBLE);
     case 17: return FNA(CN_CCX);
     case 18: return ghostrider;
-    case 19: return flex;
     default: return FN(CN_R);
   }
 }
@@ -545,6 +545,7 @@ NAN_METHOD(cryptonight) {
     if (algo == 18 && Buffer::Length(target) < ghostrider_min_input_size) {
         return THROW_ERROR_EXCEPTION("GhostRider requires input length of at least 36 bytes");
     }
+    if (algo == 19) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight algorithm");
 
     const xmrig::cn_hash_fun fn = get_cn_fn(algo);
 
@@ -1099,15 +1100,19 @@ NAN_METHOD(ethash) {
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
         const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
 
-        static int prev_epoch = 0;
-        static ethash_light_t cache = nullptr;
-        const int epoch = height / ETHASH_EPOCH_LENGTH;
-        if (prev_epoch != epoch) {
-            if (cache) ethash_light_delete(cache);
-            cache = ethash_light_new(height, epoch, epoch);
-            prev_epoch = epoch;
+        ethash_return_value_t res;
+        {
+            std::lock_guard<std::mutex> lock(ethash_mutex);
+            static int prev_epoch = 0;
+            static ethash_light_t cache = nullptr;
+            const int epoch = height / ETHASH_EPOCH_LENGTH;
+            if (prev_epoch != epoch) {
+                if (cache) ethash_light_delete(cache);
+                cache = ethash_light_new(height, epoch, epoch);
+                prev_epoch = epoch;
+            }
+            res = ethash_light_compute(cache, header_hash, nonce);
         }
-        ethash_return_value_t res = ethash_light_compute(cache, header_hash, nonce);
 
         v8::Local<v8::Array> returnValue = v8::Array::New(isolate, 2);
         SetArrayValue(isolate, returnValue, 0, Nan::CopyBuffer((char*)&res.result.b[0], 32).ToLocalChecked());
@@ -1135,17 +1140,21 @@ NAN_METHOD(etchash) {
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
         const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
 
-        static int prev_epoch_seed = 0;
-        static ethash_light_t cache = nullptr;
-        const int epoch_length = height >= ETCHASH_EPOCH_HEIGHT ? ETCHASH_EPOCH_LENGTH : ETHASH_EPOCH_LENGTH;
-        const int epoch       = height / epoch_length;
-        const int epoch_seed  = (epoch * epoch_length + 1) / ETHASH_EPOCH_LENGTH;
-        if (prev_epoch_seed != epoch_seed) {
-            if (cache) ethash_light_delete(cache);
-            cache = ethash_light_new(height, epoch_seed, epoch);
-            prev_epoch_seed = epoch_seed;
+        ethash_return_value_t res;
+        {
+            std::lock_guard<std::mutex> lock(etchash_mutex);
+            static int prev_epoch_seed = 0;
+            static ethash_light_t cache = nullptr;
+            const int epoch_length = height >= ETCHASH_EPOCH_HEIGHT ? ETCHASH_EPOCH_LENGTH : ETHASH_EPOCH_LENGTH;
+            const int epoch       = height / epoch_length;
+            const int epoch_seed  = (epoch * epoch_length + 1) / ETHASH_EPOCH_LENGTH;
+            if (prev_epoch_seed != epoch_seed) {
+                if (cache) ethash_light_delete(cache);
+                cache = ethash_light_new(height, epoch_seed, epoch);
+                prev_epoch_seed = epoch_seed;
+            }
+            res = ethash_light_compute(cache, header_hash, nonce);
         }
-        ethash_return_value_t res = ethash_light_compute(cache, header_hash, nonce);
 
         v8::Local<v8::Array> returnValue = v8::Array::New(isolate, 2);
         SetArrayValue(isolate, returnValue, 0, Nan::CopyBuffer((char*)&res.result.b[0], 32).ToLocalChecked());
