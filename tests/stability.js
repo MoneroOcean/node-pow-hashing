@@ -146,6 +146,17 @@ const baseActiveCases = [
             )
             .toString("hex"),
       },
+      {
+        expected: "true",
+        actual: () => {
+          try {
+            multiHashing.cryptonight(Buffer.alloc(35), 18);
+            return "false";
+          } catch {
+            return "true";
+          }
+        },
+      },
     ],
   }),
   checkCase({
