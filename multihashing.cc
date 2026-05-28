@@ -271,6 +271,7 @@ static uint8_t*       rx_cache_mem[rx_seed_cache_size]     = {nullptr};
 static uint8_t        rx_seed_hash[rx_seed_cache_size][32] = {0};
 static uint32_t       rx_seed_algo[rx_seed_cache_size]     = {0};
 static int            rx_active_cache_size                 = rx_seed_cache_size;
+static int            rx_next_cache_id                     = 0;
 
 static std::mutex randomx_mutex;
 static std::mutex ethash_mutex;
@@ -283,8 +284,7 @@ struct InitCtx {
     }
 } s;
 
-void init_rx(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) {
-    std::lock_guard<std::mutex> lock(randomx_mutex);
+void init_rx_unlocked(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) {
     const int rxid = rx2id(algo);
     assert(rxid < MAXRX);
 
@@ -330,7 +330,8 @@ void init_rx(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) {
       }
 
     if (found_rxid == -1) {
-        static int new_rxid = 0;
+        if (rx_next_cache_id >= rx_active_cache_size) rx_next_cache_id = 0;
+        const int new_rxid = rx_next_cache_id;
         if (rx_cache_mem[new_rxid] == nullptr) {
             rx_cache_mem[new_rxid] = static_cast<uint8_t*>(my_malloc(RANDOMX_CACHE_MAX_SIZE, 4096));
         }
@@ -348,8 +349,8 @@ void init_rx(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) {
         memcpy(rx_seed_hash[new_rxid], seed_hash_data, sizeof(rx_seed_hash[0]));
         randomx_init_cache(rx_cache[new_rxid], rx_seed_hash[new_rxid], sizeof(rx_seed_hash[0]));
         found_rxid = new_rxid;
-        ++ new_rxid;
-        if (new_rxid >= rx_active_cache_size) new_rxid = 0;
+        ++rx_next_cache_id;
+        if (rx_next_cache_id >= rx_active_cache_size) rx_next_cache_id = 0;
     }
 
     const bool use_vm_jit = false;
@@ -429,18 +430,15 @@ NAN_METHOD(randomx) {
         default: xalgo = xmrig::Algorithm::RX_0;
     }
 
+    char output[32];
     try {
-        init_rx(reinterpret_cast<const uint8_t*>(Buffer::Data(seed_hash)), xalgo);
+        std::lock_guard<std::mutex> lock(randomx_mutex);
+        init_rx_unlocked(reinterpret_cast<const uint8_t*>(Buffer::Data(seed_hash)), xalgo);
+        randomx_calculate_hash(rx_vm[rx2id(xalgo)], reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), xalgo);
     } catch (const std::domain_error &e) {
         return THROW_ERROR_EXCEPTION(e.what());
     } catch (const std::exception &e) {
         return THROW_ERROR_EXCEPTION(e.what());
-    }
-
-    char output[32];
-    {
-        std::lock_guard<std::mutex> lock(randomx_mutex);
-        randomx_calculate_hash(rx_vm[rx2id(xalgo)], reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), xalgo);
     }
 
     v8::Local<v8::Value> returnValue = Nan::CopyBuffer(output, 32).ToLocalChecked();
@@ -451,7 +449,9 @@ NAN_METHOD(setRandomxCacheSize) {
     if (info.Length() < 1 || !info[0]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 1 should be a number");
     const int size = Nan::To<int>(info[0]).FromMaybe(rx_seed_cache_size);
     if (size < 1 || size > rx_seed_cache_size) return THROW_ERROR_EXCEPTION("RandomX cache size is out of bounds");
+    std::lock_guard<std::mutex> lock(randomx_mutex);
     rx_active_cache_size = size;
+    if (rx_next_cache_id >= rx_active_cache_size) rx_next_cache_id = 0;
 }
 
 void ghostrider(const unsigned char* data, size_t size, unsigned char* output, cryptonight_ctx** ctx, uint64_t) {

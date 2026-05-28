@@ -80,7 +80,7 @@ for (let i = 0; i < 1024; i += 1) {
   M.writeBigUInt64BE(BigInt(i), i * 8);
 }
 
-const NBase                  = BigInt(Math.pow(2, 26));
+const NBase                  = 2n ** 26n;
 const IncreaseStart          = 600 * 1024;
 const IncreasePeriodForN     = 50 * 1024;
 const NIncreasementHeightMax = 9216000;
