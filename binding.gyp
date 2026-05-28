@@ -146,8 +146,6 @@
                 "xmrig/crypto/ghostrider/sph_whirlpool.c",
                 "xmrig-override/crypto/ghostrider/ghostrider.cpp",
 
-                "xmrig/crypto/flex/flex.cpp",
-
                 "xmrig-override/crypto/kawpow/KPHash.cpp",
                 "xmrig/crypto/kawpow/KPHash.cpp",
                 "xmrig/crypto/kawpow/KPCache.cpp",
