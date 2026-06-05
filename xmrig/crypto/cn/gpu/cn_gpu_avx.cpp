@@ -39,6 +39,13 @@
 	#define _mm256_bsrli_epi128(a, count) _mm256_srli_si256((a), (count))
 #endif
 
+#if defined(__clang__)
+#   pragma clang attribute push(__attribute__((target("avx2"))), apply_to = function)
+#elif defined(__GNUC__)
+#   pragma GCC push_options
+#   pragma GCC target("avx2")
+#endif
+
 inline void prep_dv_avx(__m256i* idx, __m256i& v, __m256& n01)
 {
     v = _mm256_load_si256(idx);
@@ -209,3 +216,9 @@ void cn_gpu_inner_avx(const uint8_t* spad, uint8_t* lpad)
 }
 
 template void cn_gpu_inner_avx<xmrig::CnAlgo<xmrig::Algorithm::CN_GPU>().iterations(), xmrig::CnAlgo<xmrig::Algorithm::CN_GPU>().mask()>(const uint8_t* spad, uint8_t* lpad);
+
+#if defined(__clang__)
+#   pragma clang attribute pop
+#elif defined(__GNUC__)
+#   pragma GCC pop_options
+#endif

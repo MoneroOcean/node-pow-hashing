@@ -54,7 +54,7 @@
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/cn/asm/cn_main_loop.S" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/cn/asm/CryptonightR_template.S" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/cn/r/CryptonightR_gen.cpp" || echo)',
-                '<!@(uname -m | grep "^x86_64$" >/dev/null && (./check_cpu.sh avx2 && echo "xmrig/crypto/cn/gpu/cn_gpu_avx.cpp" || echo) || echo)',
+                '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/cn/gpu/cn_gpu_avx.cpp" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/cn/gpu/cn_gpu_ssse3.cpp" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null || echo "xmrig/crypto/cn/gpu/cn_gpu_arm.cpp" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig-override/backend/cpu/platform/BasicCpuInfo.cpp" || echo)',

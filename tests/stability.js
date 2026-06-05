@@ -169,6 +169,28 @@ const baseActiveCases = [
     ],
   }),
   checkCase({
+    id: "cryptonight-invalid-selectors",
+    name: "cryptonight-invalid-selectors",
+    checks: [
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.cryptonight(Buffer.alloc(43), Number.NaN))),
+      },
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.cryptonight(Buffer.alloc(43), 2.5))),
+      },
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.cryptonight(Buffer.alloc(43), 99))),
+      },
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.cryptonight_light(Buffer.alloc(43), 2))),
+      },
+    ],
+  }),
+  checkCase({
     id: "autolykos2",
     name: "autolykos2",
     checks: [
@@ -701,7 +723,7 @@ const baseActiveCases = [
         expected: "true",
         actual: () => {
           const input = Buffer.from("This is a test");
-          return String(multiHashing.cryptonight(input, 3).equals(multiHashing.cryptonight(input, 1)));
+          return String(throws(() => multiHashing.cryptonight(input, 3)));
         },
       },
       {

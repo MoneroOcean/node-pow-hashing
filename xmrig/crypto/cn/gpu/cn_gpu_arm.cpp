@@ -31,8 +31,13 @@
 
 #if !defined(__ARM_64BIT_STATE)
 float32x4_t vdivq_f32(const float32x4_t a, const float32x4_t b) {
-   const float32x4_t inv = vrecpeq_f32(b);
-   return vmulq_f32(a, vmulq_f32(vrecpsq_f32(b, inv), inv));
+   const float lanes[4] = {
+       vgetq_lane_f32(a, 0) / vgetq_lane_f32(b, 0),
+       vgetq_lane_f32(a, 1) / vgetq_lane_f32(b, 1),
+       vgetq_lane_f32(a, 2) / vgetq_lane_f32(b, 2),
+       vgetq_lane_f32(a, 3) / vgetq_lane_f32(b, 3)
+   };
+   return vld1q_f32(lanes);
 }
 #endif
 

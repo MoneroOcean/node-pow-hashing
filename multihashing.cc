@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -104,6 +105,43 @@ inline void SetExport(v8::Isolate* isolate, v8::Local<v8::Object> target,
 inline void SetArrayValue(v8::Isolate* isolate, v8::Local<v8::Array> target,
                           uint32_t index, v8::Local<v8::Value> value) {
     target->Set(isolate->GetCurrentContext(), index, value).Check();
+}
+
+bool ReadIntArgument(v8::Local<v8::Value> value, const char* error_message, int* output) {
+    if (!value->IsNumber()) {
+        Nan::ThrowError(error_message);
+        return false;
+    }
+
+    double number = 0;
+    if (!value->NumberValue(Nan::GetCurrentContext()).To(&number)) return false;
+    if (!std::isfinite(number) || std::trunc(number) != number ||
+        number < static_cast<double>(std::numeric_limits<int>::min()) ||
+        number > static_cast<double>(std::numeric_limits<int>::max())) {
+        Nan::ThrowError(error_message);
+        return false;
+    }
+
+    *output = static_cast<int>(number);
+    return true;
+}
+
+bool ReadUint32Argument(v8::Local<v8::Value> value, const char* error_message, uint64_t* output) {
+    if (!value->IsNumber()) {
+        Nan::ThrowError(error_message);
+        return false;
+    }
+
+    double number = 0;
+    if (!value->NumberValue(Nan::GetCurrentContext()).To(&number)) return false;
+    if (!std::isfinite(number) || std::trunc(number) != number || number < 0 ||
+        number > static_cast<double>(std::numeric_limits<uint32_t>::max())) {
+        Nan::ThrowError(error_message);
+        return false;
+    }
+
+    *output = static_cast<uint64_t>(number);
+    return true;
 }
 
 void PruneKawpowCacheEpochAccesses(KawpowCacheTime now) {
@@ -478,7 +516,7 @@ NAN_METHOD(randomx) {
             if (strcmp(*algo_name, "rx/2") == 0) algo = -2;
             else return THROW_ERROR_EXCEPTION("Unsupported RandomX algo name");
         } else if (info[2]->IsNumber()) {
-            algo = Nan::To<int>(info[2]).FromMaybe(0);
+            if (!ReadIntArgument(info[2], "Argument 3 should be a finite integer or supported string", &algo)) return;
         } else return THROW_ERROR_EXCEPTION("Argument 3 should be a number or supported string");
     }
 
@@ -525,64 +563,65 @@ void ghostrider(const unsigned char* data, size_t size, unsigned char* output, c
     xmrig::ghostrider::hash(data, size, output, ctx, nullptr);
 }
 
-static xmrig::cn_hash_fun get_cn_fn(const int algo) {
+static bool get_cn_fn(const int algo, xmrig::cn_hash_fun* fn) {
   switch (algo) {
-    case 0:  return FN(CN_0);
-    case 1:  return FN(CN_1);
-    case 4:  return FN(CN_FAST);
-    case 6:  return FN(CN_XAO);
-    case 7:  return FN(CN_RTO);
-    case 8:  return FNA(CN_2);
-    case 9:  return FNA(CN_HALF);
-    case 11: return FN(CN_GPU);
-    case 12: return FNA(CN_R);
-    case 13: return FNA(CN_R);
-    case 14: return FNA(CN_RWZ);
-    case 15: return FNA(CN_ZLS);
-    case 16: return FNA(CN_DOUBLE);
-    case 17: return FNA(CN_CCX);
-    case 18: return ghostrider;
-    default: return FN(CN_1);
+    case 0:  *fn = FN(CN_0); return true;
+    case 1:  *fn = FN(CN_1); return true;
+    case 4:  *fn = FN(CN_FAST); return true;
+    case 6:  *fn = FN(CN_XAO); return true;
+    case 7:  *fn = FN(CN_RTO); return true;
+    case 8:  *fn = FNA(CN_2); return true;
+    case 9:  *fn = FNA(CN_HALF); return true;
+    case 11: *fn = FN(CN_GPU); return true;
+    case 12: *fn = FNA(CN_R); return true;
+    case 13: *fn = FNA(CN_R); return true;
+    case 14: *fn = FNA(CN_RWZ); return true;
+    case 15: *fn = FNA(CN_ZLS); return true;
+    case 16: *fn = FNA(CN_DOUBLE); return true;
+    case 17: *fn = FNA(CN_CCX); return true;
+    case 18: *fn = ghostrider; return true;
+    default: return false;
   }
 }
 
-static xmrig::cn_hash_fun get_cn_lite_fn(const int algo) {
+static bool get_cn_lite_fn(const int algo, xmrig::cn_hash_fun* fn) {
   switch (algo) {
-    case 0:  return FN(CN_LITE_0);
-    case 1:  return FN(CN_LITE_1);
-    default: return FN(CN_LITE_1);
+    case 0:  *fn = FN(CN_LITE_0); return true;
+    case 1:  *fn = FN(CN_LITE_1); return true;
+    default: return false;
   }
 }
 
-static xmrig::cn_hash_fun get_cn_heavy_fn(const int algo) {
+static bool get_cn_heavy_fn(const int algo, xmrig::cn_hash_fun* fn) {
   switch (algo) {
-    case 0:  return FN(CN_HEAVY_0);
-    case 1:  return FN(CN_HEAVY_XHV);
-    case 2:  return FN(CN_HEAVY_TUBE);
-    default: return FN(CN_HEAVY_0);
+    case 0:  *fn = FN(CN_HEAVY_0); return true;
+    case 1:  *fn = FN(CN_HEAVY_XHV); return true;
+    case 2:  *fn = FN(CN_HEAVY_TUBE); return true;
+    default: return false;
   }
 }
 
-static xmrig::cn_hash_fun get_cn_pico_fn(const int algo) {
+static bool get_cn_pico_fn(const int algo, xmrig::cn_hash_fun* fn) {
   switch (algo) {
-    case 0:  return FNA(CN_PICO_0);
-    default: return FNA(CN_PICO_0);
-  }
-}
-static xmrig::cn_hash_fun get_argon2_fn(const int algo) {
-  switch (algo) {
-    case 0:  return FN(AR2_CHUKWA);
-    case 1:  return FN(AR2_WRKZ);
-    case 2:  return FN(AR2_CHUKWA_V2);
-    default: return FN(AR2_CHUKWA);
+    case 0:  *fn = FNA(CN_PICO_0); return true;
+    default: return false;
   }
 }
 
-static xmrig::cn_hash_fun get_astrobwt_fn(const int algo) {
+static bool get_argon2_fn(const int algo, xmrig::cn_hash_fun* fn) {
   switch (algo) {
-    case 0:  return FN(ASTROBWT_DERO);
-    case 1:  return FN(ASTROBWT_DERO_2);
-    default: return FN(ASTROBWT_DERO);
+    case 0:  *fn = FN(AR2_CHUKWA); return true;
+    case 1:  *fn = FN(AR2_WRKZ); return true;
+    case 2:  *fn = FN(AR2_CHUKWA_V2); return true;
+    default: return false;
+  }
+}
+
+static bool get_astrobwt_fn(const int algo, xmrig::cn_hash_fun* fn) {
+  switch (algo) {
+    case 0:  *fn = FN(ASTROBWT_DERO); return true;
+    case 1:  *fn = FN(ASTROBWT_DERO_2); return true;
+    default: return false;
   }
 }
 
@@ -598,24 +637,22 @@ NAN_METHOD(cryptonight) {
     bool height_set = false;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
     if (info.Length() >= 3) {
-        if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
-        height = Nan::To<uint32_t>(info[2]).FromMaybe(0);
+        if (!ReadUint32Argument(info[2], "Argument 3 should be an unsigned 32-bit integer", &height)) return;
         height_set = true;
     }
 
     if ((algo == 12 || algo == 13) && !height_set) return THROW_ERROR_EXCEPTION("CryptonightR requires block template height as Argument 3");
-    if (algo == 19) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight algorithm");
     if (algo == 18 && Buffer::Length(target) < ghostrider_min_input_size) {
         return THROW_ERROR_EXCEPTION("GhostRider requires input length of at least 36 bytes");
     }
     if (!CheckKeccakBackedInputLength(target)) return;
 
-    const xmrig::cn_hash_fun fn = get_cn_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_cn_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, height);
@@ -635,18 +672,17 @@ NAN_METHOD(cryptonight_light) {
     uint64_t height = 0;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
     if (info.Length() >= 3) {
-        if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
-        height = Nan::To<unsigned int>(info[2]).FromMaybe(0);
+        if (!ReadUint32Argument(info[2], "Argument 3 should be an unsigned 32-bit integer", &height)) return;
     }
 
     if (!CheckKeccakBackedInputLength(target)) return;
 
-    const xmrig::cn_hash_fun fn = get_cn_lite_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_cn_lite_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight Light algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, height);
@@ -666,19 +702,18 @@ NAN_METHOD(cryptonight_heavy) {
     uint64_t height = 0;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
     if (info.Length() >= 3) {
-        if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
-        height = Nan::To<unsigned int>(info[2]).FromMaybe(0);
+        if (!ReadUint32Argument(info[2], "Argument 3 should be an unsigned 32-bit integer", &height)) return;
     }
 
 
     if (!CheckKeccakBackedInputLength(target)) return;
 
-    const xmrig::cn_hash_fun fn = get_cn_heavy_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_cn_heavy_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight Heavy algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, height);
@@ -697,13 +732,13 @@ NAN_METHOD(cryptonight_pico) {
     int algo = 0;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
     if (!CheckKeccakBackedInputLength(target)) return;
 
-    const xmrig::cn_hash_fun fn = get_cn_pico_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_cn_pico_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported CryptoNight Pico algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, 0);
@@ -723,11 +758,11 @@ NAN_METHOD(argon2) {
     int algo = 0;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
-    const xmrig::cn_hash_fun fn = get_argon2_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_argon2_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported Argon2 algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, 0);
@@ -746,11 +781,11 @@ NAN_METHOD(astrobwt) {
     int algo = 0;
 
     if (info.Length() >= 2) {
-        if (!info[1]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 2 should be a number");
-        algo = Nan::To<int>(info[1]).FromMaybe(0);
+        if (!ReadIntArgument(info[1], "Argument 2 should be a finite integer", &algo)) return;
     }
 
-    const xmrig::cn_hash_fun fn = get_astrobwt_fn(algo);
+    xmrig::cn_hash_fun fn = nullptr;
+    if (!get_astrobwt_fn(algo, &fn)) return THROW_ERROR_EXCEPTION("Unsupported AstroBWT algorithm");
 
     char output[32];
     fn(reinterpret_cast<const uint8_t*>(Buffer::Data(target)), Buffer::Length(target), reinterpret_cast<uint8_t*>(output), &ctx, 0);
