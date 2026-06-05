@@ -180,12 +180,26 @@ const baseActiveCases = [
           return result[0].toString("hex");
         },
       },
+      {
+        expected: "true",
+        actual: () => {
+          const result = multiHashing.autolykos2_hashes(Buffer.alloc(40), 9216000);
+          return String(Buffer.isBuffer(result[0]) && Buffer.isBuffer(result[1]));
+        },
+      },
     ],
   }),
   checkCase({
     id: "ethash",
     name: "ethash",
     checks: [
+      {
+        expected: "true",
+        actual: () => {
+          const result = multiHashing.ethash(Buffer.alloc(32), Buffer.alloc(8), 0);
+          return String(Buffer.isBuffer(result[0]) && Buffer.isBuffer(result[1]));
+        },
+      },
       {
         expected: "0000000000095d18875acd4a2c2a5ff476c9acf283b4975d7af8d6c33d119c74",
         actual: () =>
@@ -220,6 +234,13 @@ const baseActiveCases = [
     id: "etchash",
     name: "etchash",
     checks: [
+      {
+        expected: "true",
+        actual: () => {
+          const result = multiHashing.etchash(Buffer.alloc(32), Buffer.alloc(8), 0);
+          return String(Buffer.isBuffer(result[0]) && Buffer.isBuffer(result[1]));
+        },
+      },
       {
         expected: "0000000d4899e38dbd9ac5bdc3726e34669986f53af0c60f50c5aa54e7fa4ed0",
         actual: () =>
@@ -509,6 +530,23 @@ const baseActiveCases = [
     parseLine: (line) => parseCnLine(line, "hex"),
     execute: ({ input }) => multiHashing.cryptonight_pico(Buffer.from(input, "hex")).toString("hex"),
     formatActual: ({ input }, actual) => `${input}: ${actual}`,
+  }),
+  checkCase({
+    id: "randomx-invalid-algo",
+    name: "randomx invalid algo",
+    checks: [
+      {
+        expected: "true",
+        actual: () => {
+          try {
+            multiHashing.randomx(Buffer.from("test"), Buffer.alloc(32), 999);
+            return "false";
+          } catch {
+            return "true";
+          }
+        },
+      },
+    ],
   }),
   vectorCase({
     id: "rx-0",

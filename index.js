@@ -90,7 +90,7 @@ const N = height => {
   if (height < IncreaseStart) {
     return NBase;
   } else if(height >= NIncreasementHeightMax){
-    return 2147387550;
+    return 2147387550n;
   } else {
     let res = NBase;
     let iterationsNumber = Math.floor((height - IncreaseStart) / IncreasePeriodForN) + 1;

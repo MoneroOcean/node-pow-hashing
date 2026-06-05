@@ -427,7 +427,7 @@ NAN_METHOD(randomx) {
         case 19: xalgo = xmrig::Algorithm::RX_KEVA; break;
         case 20: xalgo = xmrig::Algorithm::RX_GRAFT; break;
         case 22: xalgo = xmrig::Algorithm::RX_XEQ; break;
-        default: xalgo = xmrig::Algorithm::RX_0;
+        default: return THROW_ERROR_EXCEPTION("Unknown RandomX algo");
     }
 
     char output[32];
@@ -1094,6 +1094,7 @@ NAN_METHOD(ethash) {
 
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
         const int height = Nan::To<int>(info[2]).FromMaybe(0);
+        if (height < 0) return THROW_ERROR_EXCEPTION("Argument 3 should be a non-negative number");
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
@@ -1102,12 +1103,13 @@ NAN_METHOD(ethash) {
         ethash_return_value_t res;
         {
             std::lock_guard<std::mutex> lock(ethash_mutex);
-            static int prev_epoch = 0;
+            static int prev_epoch = -1;
             static ethash_light_t cache = nullptr;
             const int epoch = height / ETHASH_EPOCH_LENGTH;
-            if (prev_epoch != epoch) {
+            if (cache == nullptr || prev_epoch != epoch) {
                 if (cache) ethash_light_delete(cache);
                 cache = ethash_light_new(height, epoch, epoch);
+                if (cache == nullptr) return THROW_ERROR_EXCEPTION("Unable to create Ethash cache");
                 prev_epoch = epoch;
             }
             res = ethash_light_compute(cache, header_hash, nonce);
@@ -1134,6 +1136,7 @@ NAN_METHOD(etchash) {
 
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
         const int height = Nan::To<int>(info[2]).FromMaybe(0);
+        if (height < 0) return THROW_ERROR_EXCEPTION("Argument 3 should be a non-negative number");
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
@@ -1142,14 +1145,15 @@ NAN_METHOD(etchash) {
         ethash_return_value_t res;
         {
             std::lock_guard<std::mutex> lock(etchash_mutex);
-            static int prev_epoch_seed = 0;
+            static int prev_epoch_seed = -1;
             static ethash_light_t cache = nullptr;
             const int epoch_length = height >= ETCHASH_EPOCH_HEIGHT ? ETCHASH_EPOCH_LENGTH : ETHASH_EPOCH_LENGTH;
             const int epoch       = height / epoch_length;
             const int epoch_seed  = (epoch * epoch_length + 1) / ETHASH_EPOCH_LENGTH;
-            if (prev_epoch_seed != epoch_seed) {
+            if (cache == nullptr || prev_epoch_seed != epoch_seed) {
                 if (cache) ethash_light_delete(cache);
                 cache = ethash_light_new(height, epoch_seed, epoch);
+                if (cache == nullptr) return THROW_ERROR_EXCEPTION("Unable to create Etchash cache");
                 prev_epoch_seed = epoch_seed;
             }
             res = ethash_light_compute(cache, header_hash, nonce);
