@@ -107,6 +107,15 @@ function toHex(value) {
   return value;
 }
 
+function throws(call) {
+  try {
+    call();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function vectorCase(definition) {
   return {
     ...definition,
@@ -677,6 +686,45 @@ const baseActiveCases = [
       {
         expected: "35e083d4b9c64c2a68820a431f61311998a8cd1864dba4077e25b7f121d54bd1",
         actual: () => multiHashing.argon2(sharedArgonInput, 1).toString("hex"),
+      },
+    ],
+  }),
+  checkCase({
+    id: "native-input-validation",
+    name: "native input validation",
+    checks: [
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.argon2(Buffer.alloc(15), 0))),
+      },
+      {
+        expected: "true",
+        actual: () => {
+          const input = Buffer.from("This is a test");
+          return String(multiHashing.cryptonight(input, 3).equals(multiHashing.cryptonight(input, 1)));
+        },
+      },
+      {
+        expected: "true",
+        actual: () => {
+          const throwingRing = new Array(40).fill(0);
+          Object.defineProperty(throwingRing, 0, {
+            get() {
+              throw new Error("edge getter");
+            },
+          });
+          const negativeRing = new Array(48).fill(0);
+          negativeRing[0] = -1;
+
+          const invalidCalls = [
+            () => multiHashing.c29s("not-buffer", new Array(32).fill(0)),
+            () => multiHashing.c29v(Buffer.alloc(1), []),
+            () => multiHashing.c29b(Buffer.alloc(1), throwingRing),
+            () => multiHashing.c29i_packed_edges(negativeRing),
+          ];
+
+          return String(invalidCalls.every(throws));
+        },
       },
     ],
   }),

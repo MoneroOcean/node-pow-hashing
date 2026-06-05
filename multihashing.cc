@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <unistd.h>
 #include <vector>
@@ -393,6 +394,72 @@ using namespace v8;
 using namespace Nan;
 namespace Buffer = node::Buffer;
 
+bool GetC29HeaderBuffer(const v8::FunctionCallbackInfo<v8::Value>& info, Local<Object>* target) {
+    v8::Isolate *isolate = v8::Isolate::GetCurrent();
+
+    if (info.Length() < 1 || !info[0]->IsObject()) {
+        Nan::ThrowError("Argument 1 should be a buffer object.");
+        return false;
+    }
+
+    if (!info[0]->ToObject(isolate->GetCurrentContext()).ToLocal(target) || !Buffer::HasInstance(*target)) {
+        Nan::ThrowError("Argument 1 should be a buffer object.");
+        return false;
+    }
+
+    if (Buffer::Length(*target) > std::numeric_limits<uint32_t>::max()) {
+        Nan::ThrowError("Argument 1 is too large.");
+        return false;
+    }
+
+    return true;
+}
+
+bool GetC29Ring(const v8::FunctionCallbackInfo<v8::Value>& info, int index, uint32_t proof_size, uint32_t* edges) {
+    if (info.Length() <= index || !info[index]->IsArray()) {
+        Nan::ThrowError("Ring argument should be an array.");
+        return false;
+    }
+
+    Local<Array> ring = info[index].As<Array>();
+    if (ring->Length() < proof_size) {
+        Nan::ThrowError("Ring argument has invalid length.");
+        return false;
+    }
+
+    Local<Context> context = Nan::GetCurrentContext();
+    for (uint32_t n = 0; n < proof_size; n++) {
+        v8::Maybe<bool> maybe_has_edge = ring->Has(context, n);
+        bool has_edge = false;
+        if (!maybe_has_edge.To(&has_edge)) return false;
+        if (!has_edge) {
+            Nan::ThrowError("Ring argument contains missing edges.");
+            return false;
+        }
+
+        Local<Value> value;
+        if (!ring->Get(context, n).ToLocal(&value)) return false;
+        if (!value->IsUint32()) {
+            Nan::ThrowError("Ring entries should be unsigned 32-bit integers.");
+            return false;
+        }
+
+        v8::Maybe<uint32_t> maybe_edge = value->Uint32Value(context);
+        if (!maybe_edge.To(&edges[n])) return false;
+    }
+
+    return true;
+}
+
+bool CheckKeccakBackedInputLength(Local<Object> target) {
+    if (Buffer::Length(target) > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        Nan::ThrowError("Hash input is too large.");
+        return false;
+    }
+
+    return true;
+}
+
 NAN_METHOD(randomx) {
     if (info.Length() < 2) return THROW_ERROR_EXCEPTION("You must provide two arguments.");
 
@@ -468,13 +535,14 @@ static xmrig::cn_hash_fun get_cn_fn(const int algo) {
     case 8:  return FNA(CN_2);
     case 9:  return FNA(CN_HALF);
     case 11: return FN(CN_GPU);
+    case 12: return FNA(CN_R);
     case 13: return FNA(CN_R);
     case 14: return FNA(CN_RWZ);
     case 15: return FNA(CN_ZLS);
     case 16: return FNA(CN_DOUBLE);
     case 17: return FNA(CN_CCX);
     case 18: return ghostrider;
-    default: return FN(CN_R);
+    default: return FN(CN_1);
   }
 }
 
@@ -545,6 +613,7 @@ NAN_METHOD(cryptonight) {
     if (algo == 18 && Buffer::Length(target) < ghostrider_min_input_size) {
         return THROW_ERROR_EXCEPTION("GhostRider requires input length of at least 36 bytes");
     }
+    if (!CheckKeccakBackedInputLength(target)) return;
 
     const xmrig::cn_hash_fun fn = get_cn_fn(algo);
 
@@ -574,6 +643,8 @@ NAN_METHOD(cryptonight_light) {
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
         height = Nan::To<unsigned int>(info[2]).FromMaybe(0);
     }
+
+    if (!CheckKeccakBackedInputLength(target)) return;
 
     const xmrig::cn_hash_fun fn = get_cn_lite_fn(algo);
 
@@ -605,6 +676,8 @@ NAN_METHOD(cryptonight_heavy) {
     }
 
 
+    if (!CheckKeccakBackedInputLength(target)) return;
+
     const xmrig::cn_hash_fun fn = get_cn_heavy_fn(algo);
 
     char output[32];
@@ -628,6 +701,8 @@ NAN_METHOD(cryptonight_pico) {
         algo = Nan::To<int>(info[1]).FromMaybe(0);
     }
 
+    if (!CheckKeccakBackedInputLength(target)) return;
+
     const xmrig::cn_hash_fun fn = get_cn_pico_fn(algo);
 
     char output[32];
@@ -643,6 +718,7 @@ NAN_METHOD(argon2) {
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
     Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
     if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    if (Buffer::Length(target) < 16) return THROW_ERROR_EXCEPTION("Argument 1 should be at least 16 bytes.");
 
     int algo = 0;
 
@@ -711,115 +787,52 @@ static void c29_setheader(const char *header, const uint32_t headerlen, siphash_
 	setsipkeys(hdrkey,keys);
 }
 
-NAN_METHOD(c29) {
+using C29VerifyFn = int (*)(uint32_t*, siphash_keys*);
+
+void c29_verify_wrap(const v8::FunctionCallbackInfo<v8::Value>& info, uint32_t proof_size, C29VerifyFn verify_fn) {
         if (info.Length() != 2) return THROW_ERROR_EXCEPTION("You must provide 2 arguments: header, ring");
 
-        char * input = Buffer::Data(info[0]);
-        uint32_t input_len = Buffer::Length(info[0]);
+        Local<Object> target;
+        if (!GetC29HeaderBuffer(info, &target)) return;
 
         siphash_keys keys;
-        c29_setheader(input,input_len,&keys);
+        c29_setheader(Buffer::Data(target), static_cast<uint32_t>(Buffer::Length(target)), &keys);
 
-        Local<Array> ring = Local<Array>::Cast(info[1]);
+        std::vector<uint32_t> edges(proof_size);
+        if (!GetC29Ring(info, 1, proof_size, edges.data())) return;
 
-        uint32_t edges[PROOFSIZE];
-        for (uint32_t n = 0; n < PROOFSIZE; n++)
-                edges[n]=ring->Get(Nan::GetCurrentContext(), n).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-        int retval = c29_verify(edges,&keys);
-
+        int retval = verify_fn(edges.data(), &keys);
         info.GetReturnValue().Set(Nan::New<Number>(retval));
 }
 
+NAN_METHOD(c29) {
+        c29_verify_wrap(info, PROOFSIZE, c29_verify);
+}
+
 NAN_METHOD(c29s) {
-	if (info.Length() != 2) return THROW_ERROR_EXCEPTION("You must provide 2 arguments: header, ring");
-
-	char * input = Buffer::Data(info[0]);
-	uint32_t input_len = Buffer::Length(info[0]);
-
-	siphash_keys keys;
-	c29_setheader(input,input_len,&keys);
-
-	Local<Array> ring = Local<Array>::Cast(info[1]);
-
-	uint32_t edges[PROOFSIZEs];
-	for (uint32_t n = 0; n < PROOFSIZEs; n++)
-		edges[n]=ring->Get(Nan::GetCurrentContext(), n).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-	int retval = c29s_verify(edges,&keys);
-
-	info.GetReturnValue().Set(Nan::New<Number>(retval));
+	c29_verify_wrap(info, PROOFSIZEs, c29s_verify);
 }
 
 NAN_METHOD(c29v) {
-	if (info.Length() != 2) return THROW_ERROR_EXCEPTION("You must provide 2 arguments: header, ring");
-
-	char * input = Buffer::Data(info[0]);
-	uint32_t input_len = Buffer::Length(info[0]);
-
-	siphash_keys keys;
-	c29_setheader(input,input_len,&keys);
-
-	Local<Array> ring = Local<Array>::Cast(info[1]);
-
-	uint32_t edges[PROOFSIZEv];
-	for (uint32_t n = 0; n < PROOFSIZEv; n++)
-		edges[n]=ring->Get(Nan::GetCurrentContext(), n).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-	int retval = c29v_verify(edges,&keys);
-
-	info.GetReturnValue().Set(Nan::New<Number>(retval));
+	c29_verify_wrap(info, PROOFSIZEv, c29v_verify);
 }
 
 NAN_METHOD(c29i) {
-	if (info.Length() != 2) return THROW_ERROR_EXCEPTION("You must provide 2 arguments: header, ring");
-
-	char * input = Buffer::Data(info[0]);
-	uint32_t input_len = Buffer::Length(info[0]);
-
-	siphash_keys keys;
-	c29_setheader(input,input_len,&keys);
-
-	Local<Array> ring = Local<Array>::Cast(info[1]);
-
-	uint32_t edges[PROOFSIZEi];
-	for (uint32_t n = 0; n < PROOFSIZEi; n++)
-		edges[n]=ring->Get(Nan::GetCurrentContext(), n).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-	int retval = c29i_verify(edges,&keys);
-
-	info.GetReturnValue().Set(Nan::New<Number>(retval));
+	c29_verify_wrap(info, PROOFSIZEi, c29i_verify);
 }
 
 NAN_METHOD(c29b) {
-	if (info.Length() != 2) return THROW_ERROR_EXCEPTION("You must provide 2 arguments: header, ring");
-
-	char * input = Buffer::Data(info[0]);
-	uint32_t input_len = Buffer::Length(info[0]);
-
-	siphash_keys keys;
-	c29_setheader(input,input_len,&keys);
-
-	Local<Array> ring = Local<Array>::Cast(info[1]);
-
-	uint32_t edges[PROOFSIZEb];
-	for (uint32_t n = 0; n < PROOFSIZEb; n++)
-		edges[n]=ring->Get(Nan::GetCurrentContext(), n).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-	int retval = c29b_verify(edges,&keys);
-
-	info.GetReturnValue().Set(Nan::New<Number>(retval));
+	c29_verify_wrap(info, PROOFSIZEb, c29b_verify);
 }
 
 NAN_METHOD(c29_cycle_hash) {
         if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument: packed edge buffer");
 
-	v8::Isolate *isolate = v8::Isolate::GetCurrent();
-        Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-        if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+        Local<Object> target;
+        if (!GetC29HeaderBuffer(info, &target)) return;
 
-        char * input = Buffer::Data(info[0]);
-        uint32_t input_len = Buffer::Length(info[0]);
+        char * input = Buffer::Data(target);
+        uint32_t input_len = static_cast<uint32_t>(Buffer::Length(target));
 
 	if (!input_len) return THROW_ERROR_EXCEPTION("Argument 1 should be a non empty buffer object.");
 
@@ -835,24 +848,24 @@ NAN_METHOD(c29_cycle_hash) {
 }
 
 
-NAN_METHOD(c29_packed_edges) {
+void c29_packed_edges_wrap(const v8::FunctionCallbackInfo<v8::Value>& info, uint32_t proof_size) {
         if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument:ring");
 
-        Local<Array> ring = Local<Array>::Cast(info[0]);
+        std::vector<uint32_t> edges(proof_size);
+        if (!GetC29Ring(info, 0, proof_size, edges.data())) return;
 
-        uint8_t hashdata[PROOFSIZE*EDGEBITS/8+1];
-        memset(hashdata, 0, PROOFSIZE*EDGEBITS/8+1);
+        const size_t hashdata_size = (static_cast<size_t>(proof_size) * EDGEBITS + 7) / 8;
+        std::vector<uint8_t> hashdata(hashdata_size, 0);
 
-        int bytepos = 0;
+        size_t bytepos = 0;
         int bitpos = 0;
-        for(int i = 0; i < PROOFSIZE; i++){
-
-                uint32_t node = ring->Get(Nan::GetCurrentContext(), i).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
+        for(uint32_t i = 0; i < proof_size; i++){
+                const uint32_t node = edges[i];
 
                 for(int j = 0; j < EDGEBITS; j++) {
 
                         if((node >> j) & 1U)
-                                hashdata[bytepos] |= 1UL << bitpos;
+                                hashdata[bytepos] |= static_cast<uint8_t>(1U << bitpos);
 
                         bitpos++;
                         if(bitpos==8) {
@@ -861,129 +874,30 @@ NAN_METHOD(c29_packed_edges) {
                 }
         }
 
-        v8::Local<v8::Value> returnValue = Nan::CopyBuffer((char*)hashdata, sizeof(hashdata)).ToLocalChecked();
+        v8::Local<v8::Value> returnValue = Nan::CopyBuffer(reinterpret_cast<char*>(hashdata.data()), hashdata.size()).ToLocalChecked();
         info.GetReturnValue().Set(returnValue);
+}
+
+
+NAN_METHOD(c29_packed_edges) {
+        c29_packed_edges_wrap(info, PROOFSIZE);
 }
 
 
 NAN_METHOD(c29s_packed_edges) {
-	if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument:ring");
-
-	Local<Array> ring = Local<Array>::Cast(info[0]);
-
-	uint8_t hashdata[PROOFSIZEs*EDGEBITS/8];
-	memset(hashdata, 0, PROOFSIZEs*EDGEBITS/8);
-
-	int bytepos = 0;
-	int bitpos = 0;
-	for(int i = 0; i < PROOFSIZEs; i++){
-
-		uint32_t node = ring->Get(Nan::GetCurrentContext(), i).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-		for(int j = 0; j < EDGEBITS; j++) {
-
-			if((node >> j) & 1U)
-				hashdata[bytepos] |= 1UL << bitpos;
-
-			bitpos++;
-			if(bitpos==8) {
-				bitpos=0;bytepos++;
-			}
-		}
-	}
-
-        v8::Local<v8::Value> returnValue = Nan::CopyBuffer((char*)hashdata, sizeof(hashdata)).ToLocalChecked();
-        info.GetReturnValue().Set(returnValue);
+	c29_packed_edges_wrap(info, PROOFSIZEs);
 }
 
 NAN_METHOD(c29v_packed_edges) {
-        if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument:ring");
-
-        Local<Array> ring = Local<Array>::Cast(info[0]);
-
-        uint8_t hashdata[PROOFSIZEv*EDGEBITS/8];
-        memset(hashdata, 0, PROOFSIZEv*EDGEBITS/8);
-
-        int bytepos = 0;
-        int bitpos = 0;
-        for(int i = 0; i < PROOFSIZEv; i++){
-
-                uint32_t node = ring->Get(Nan::GetCurrentContext(), i).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-                for(int j = 0; j < EDGEBITS; j++) {
-
-                        if((node >> j) & 1U)
-                                hashdata[bytepos] |= 1UL << bitpos;
-
-                        bitpos++;
-                        if(bitpos==8) {
-                                bitpos=0;bytepos++;
-                        }
-                }
-        }
-
-        v8::Local<v8::Value> returnValue = Nan::CopyBuffer((char*)hashdata, sizeof(hashdata)).ToLocalChecked();
-        info.GetReturnValue().Set(returnValue);
+        c29_packed_edges_wrap(info, PROOFSIZEv);
 }
 
 NAN_METHOD(c29b_packed_edges) {
-	if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument:ring");
-
-	Local<Array> ring = Local<Array>::Cast(info[0]);
-
-	uint8_t hashdata[PROOFSIZEb*EDGEBITS/8];
-	memset(hashdata, 0, PROOFSIZEb*EDGEBITS/8);
-
-	int bytepos = 0;
-	int bitpos = 0;
-	for(int i = 0; i < PROOFSIZEb; i++){
-
-		uint32_t node = ring->Get(Nan::GetCurrentContext(), i).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-		for(int j = 0; j < EDGEBITS; j++) {
-
-			if((node >> j) & 1U)
-				hashdata[bytepos] |= 1UL << bitpos;
-
-			bitpos++;
-			if(bitpos==8) {
-				bitpos=0;bytepos++;
-			}
-		}
-	}
-
-        v8::Local<v8::Value> returnValue = Nan::CopyBuffer((char*)hashdata, sizeof(hashdata)).ToLocalChecked();
-        info.GetReturnValue().Set(returnValue);
+	c29_packed_edges_wrap(info, PROOFSIZEb);
 }
 
 NAN_METHOD(c29i_packed_edges) {
-	if (info.Length() != 1) return THROW_ERROR_EXCEPTION("You must provide 1 argument:ring");
-
-	Local<Array> ring = Local<Array>::Cast(info[0]);
-
-	uint8_t hashdata[PROOFSIZEi*EDGEBITS/8];
-	memset(hashdata, 0, PROOFSIZEi*EDGEBITS/8);
-
-	int bytepos = 0;
-	int bitpos = 0;
-	for(int i = 0; i < PROOFSIZEi; i++){
-
-		uint32_t node = ring->Get(Nan::GetCurrentContext(), i).ToLocalChecked()->Uint32Value(Nan::GetCurrentContext()).FromJust();
-
-		for(int j = 0; j < EDGEBITS; j++) {
-
-			if((node >> j) & 1U)
-				hashdata[bytepos] |= 1UL << bitpos;
-
-			bitpos++;
-			if(bitpos==8) {
-				bitpos=0;bytepos++;
-			}
-		}
-	}
-
-        v8::Local<v8::Value> returnValue = Nan::CopyBuffer((char*)hashdata, sizeof(hashdata)).ToLocalChecked();
-        info.GetReturnValue().Set(returnValue);
+	c29_packed_edges_wrap(info, PROOFSIZEi);
 }
 
 NAN_METHOD(kawpow) {
