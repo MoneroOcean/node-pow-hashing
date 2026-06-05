@@ -259,6 +259,10 @@ const baseActiveCases = [
             )[1]
           ),
       },
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.ethash(Buffer.alloc(32), Buffer.alloc(8), 2048 * 30000))),
+      },
     ],
   }),
   checkCase({
@@ -299,6 +303,10 @@ const baseActiveCases = [
               15658542
             )[1]
           ),
+      },
+      {
+        expected: "true",
+        actual: () => String(throws(() => multiHashing.etchash(Buffer.alloc(32), Buffer.alloc(8), 2048 * 60000))),
       },
     ],
   }),

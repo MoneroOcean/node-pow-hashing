@@ -10,10 +10,10 @@
 #define NNODES1 NEDGES1
 #define NNODES2 NEDGES2
 #define NODE1MASK ((uint32_t)NNODES1 - 1)
-static uint64_t v0;
-static uint64_t v1;
-static uint64_t v2;
-static uint64_t v3;
+static thread_local uint64_t v0;
+static thread_local uint64_t v1;
+static thread_local uint64_t v2;
+static thread_local uint64_t v3;
 static uint64_t rotl(uint64_t x, uint64_t b) {
 	return (x << b) | (x >> (64 - b));
 }

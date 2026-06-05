@@ -84,6 +84,7 @@ struct KawpowEpochAccess {
 
 constexpr size_t KAWPOW_MIN_CACHE_ENTRIES = 1;
 constexpr size_t KAWPOW_MAX_CACHE_ENTRIES = 10;
+constexpr int kMaxEthashEpochs = 2048;
 constexpr auto KAWPOW_CACHE_GROW_WINDOW = std::chrono::hours(1);
 std::vector<KawpowCacheEntry> kawpow_caches;
 std::vector<KawpowEpochAccess> kawpow_cache_epoch_accesses;
@@ -1044,6 +1045,8 @@ NAN_METHOD(ethash) {
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
         const int height = Nan::To<int>(info[2]).FromMaybe(0);
         if (height < 0) return THROW_ERROR_EXCEPTION("Argument 3 should be a non-negative number");
+        const int epoch = height / ETHASH_EPOCH_LENGTH;
+        if (epoch >= kMaxEthashEpochs) return THROW_ERROR_EXCEPTION("Argument 3 exceeds supported Ethash epoch range");
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
@@ -1054,7 +1057,6 @@ NAN_METHOD(ethash) {
             std::lock_guard<std::mutex> lock(ethash_mutex);
             static int prev_epoch = -1;
             static ethash_light_t cache = nullptr;
-            const int epoch = height / ETHASH_EPOCH_LENGTH;
             if (cache == nullptr || prev_epoch != epoch) {
                 if (cache) ethash_light_delete(cache);
                 cache = ethash_light_new(height, epoch, epoch);
@@ -1086,6 +1088,10 @@ NAN_METHOD(etchash) {
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
         const int height = Nan::To<int>(info[2]).FromMaybe(0);
         if (height < 0) return THROW_ERROR_EXCEPTION("Argument 3 should be a non-negative number");
+        const int epoch_length = height >= ETCHASH_EPOCH_HEIGHT ? ETCHASH_EPOCH_LENGTH : ETHASH_EPOCH_LENGTH;
+        const int epoch       = height / epoch_length;
+        if (epoch >= kMaxEthashEpochs) return THROW_ERROR_EXCEPTION("Argument 3 exceeds supported Etchash epoch range");
+        const int epoch_seed  = (epoch * epoch_length + 1) / ETHASH_EPOCH_LENGTH;
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
@@ -1096,9 +1102,6 @@ NAN_METHOD(etchash) {
             std::lock_guard<std::mutex> lock(etchash_mutex);
             static int prev_epoch_seed = -1;
             static ethash_light_t cache = nullptr;
-            const int epoch_length = height >= ETCHASH_EPOCH_HEIGHT ? ETCHASH_EPOCH_LENGTH : ETHASH_EPOCH_LENGTH;
-            const int epoch       = height / epoch_length;
-            const int epoch_seed  = (epoch * epoch_length + 1) / ETHASH_EPOCH_LENGTH;
             if (cache == nullptr || prev_epoch_seed != epoch_seed) {
                 if (cache) ethash_light_delete(cache);
                 cache = ethash_light_new(height, epoch_seed, epoch);

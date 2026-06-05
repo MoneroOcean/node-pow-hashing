@@ -50,12 +50,18 @@
 
 uint64_t ethash_get_datasize(uint64_t const epoch)
 {
+        if (epoch >= sizeof(dag_sizes) / sizeof(dag_sizes[0])) {
+                return 0;
+        }
         assert(epoch < 2048);
         return dag_sizes[epoch];
 }
 
 uint64_t ethash_get_cachesize(uint64_t const epoch)
 {
+        if (epoch >= sizeof(cache_sizes) / sizeof(cache_sizes[0])) {
+                return 0;
+        }
         assert(epoch < 2048);
         return cache_sizes[epoch];
 }
@@ -392,9 +398,17 @@ fail_free_light:
 
 ethash_light_t ethash_light_new(uint64_t block_number, uint64_t epoch_seed, uint64_t epoch)
 {
+        uint64_t cache_size = ethash_get_cachesize(epoch);
+        if (cache_size == 0) {
+                return NULL;
+        }
+
         ethash_h256_t seedhash = ethash_get_seedhash(epoch_seed);
         ethash_light_t ret;
-        ret = ethash_light_new_internal(ethash_get_cachesize(epoch), &seedhash);
+        ret = ethash_light_new_internal(cache_size, &seedhash);
+        if (ret == NULL) {
+                return NULL;
+        }
         ret->block_number = block_number;
         ret->epoch = epoch;
         return ret;
@@ -402,6 +416,9 @@ ethash_light_t ethash_light_new(uint64_t block_number, uint64_t epoch_seed, uint
 
 void ethash_light_delete(ethash_light_t light)
 {
+	if (light == NULL) {
+		return;
+	}
 	if (light->cache) {
 		free(light->cache);
 	}
@@ -429,7 +446,19 @@ ethash_return_value_t ethash_light_compute(
 	uint64_t nonce
 )
 {
+        if (light == NULL) {
+                ethash_return_value_t ret;
+                memset(&ret, 0, sizeof(ret));
+                ret.success = false;
+                return ret;
+        }
 	uint64_t full_size = ethash_get_datasize(light->epoch);
+        if (full_size == 0) {
+                ethash_return_value_t ret;
+                memset(&ret, 0, sizeof(ret));
+                ret.success = false;
+                return ret;
+        }
 	return ethash_light_compute_internal(light, full_size, header_hash, nonce);
 }
 

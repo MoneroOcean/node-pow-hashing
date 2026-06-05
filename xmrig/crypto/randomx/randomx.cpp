@@ -45,7 +45,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "backend/cpu/Cpu.h"
 #include "crypto/common/VirtualMemory.h"
+#include <limits>
 #include <mutex>
+#include <vector>
 
 #include <cassert>
 
@@ -65,15 +67,6 @@ extern "C" {
  * base/tools, so use the local header while keeping PROFILE_SCOPE calls intact.
  */
 #include "base/tools/Profiler.h"
-/* node-powhash local change end */
-
-/* node-powhash local change start:
- * Upstream uses xmrig::Job::kMaxBlobSize for RandomX v2 commitments. The addon
- * does not vendor the miner Job stack, so keep the same maximum locally.
- */
-namespace {
-constexpr size_t kMaxBlobSize = 408;
-}
 /* node-powhash local change end */
 
 RandomX_ConfigurationMoneroV2::RandomX_ConfigurationMoneroV2()
@@ -570,6 +563,9 @@ extern "C" {
 	}
 
 	void randomx_release_cache(randomx_cache* cache) {
+		if (cache == nullptr) {
+			return;
+		}
 		delete cache->jit;
 		delete cache;
 	}
@@ -605,6 +601,9 @@ extern "C" {
 	}
 
 	void randomx_release_dataset(randomx_dataset *dataset) {
+		if (dataset == nullptr) {
+			return;
+		}
 		delete dataset;
 	}
 
@@ -783,15 +782,13 @@ extern "C" {
 	}
 
 	void randomx_calculate_commitment(const void* input, size_t inputSize, const void* hash_in, void* com_out) {
-		/* node-powhash local change start:
-		 * Use the local max blob size because the addon does not vendor
-		 * xmrig::Job, where upstream stores this constant.
-		 */
-		uint8_t buf[kMaxBlobSize + RANDOMX_HASH_SIZE];
-		/* node-powhash local change end */
-		memcpy(buf, input, inputSize);
-		memcpy(buf + inputSize, hash_in, RANDOMX_HASH_SIZE);
-		rx_blake2b_wrapper::run(com_out, RANDOMX_HASH_SIZE, buf, inputSize + RANDOMX_HASH_SIZE);
+		if (inputSize > std::numeric_limits<size_t>::max() - RANDOMX_HASH_SIZE) {
+			return;
+		}
+		std::vector<uint8_t> buf(inputSize + RANDOMX_HASH_SIZE);
+		memcpy(buf.data(), input, inputSize);
+		memcpy(buf.data() + inputSize, hash_in, RANDOMX_HASH_SIZE);
+		rx_blake2b_wrapper::run(com_out, RANDOMX_HASH_SIZE, buf.data(), buf.size());
 	}
 
 }
