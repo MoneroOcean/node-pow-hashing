@@ -20,11 +20,6 @@
   #define my_malloc(a, b) _mm_malloc(a, b)
 #endif
 
-//#if (defined(__AES__) && (__AES__ == 1)) || defined(__APPLE__) || defined(__ARM_ARCH)
-//#else
-//#define _mm_aeskeygenassist_si128(a, b) a
-//#define _mm_aesenc_si128(a, b) a
-//#endif
 
 #include "crypto/common/VirtualMemory.h"
 #include "backend/cpu/Cpu.h"
@@ -292,10 +287,6 @@ int rx2id(xmrig::Algorithm::Id algo) {
       case xmrig::Algorithm::RX_0:     return 0;
       case xmrig::Algorithm::RX_V2:    return 1;
       case xmrig::Algorithm::RX_ARQ:   return 2;
-      //case xmrig::Algorithm::RX_WOW:   return 2;
-      //case xmrig::Algorithm::RX_GRAFT: return 3;
-      //case xmrig::Algorithm::RX_SFX:   return 4;
-      //case xmrig::Algorithm::RX_KEVA:  return 5;
       case xmrig::Algorithm::RX_XLA:   return MAXRX-1;
       default: return 0;
   }
@@ -330,7 +321,6 @@ void init_rx_unlocked(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) 
 
     randomx_set_scratchpad_prefetch_mode(0);
     randomx_set_huge_pages_jit(true);
-    //randomx_set_optimized_dataset_init(0);
 
     switch (algo) {
         case xmrig::Algorithm::RX_0:
