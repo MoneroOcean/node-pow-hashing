@@ -110,6 +110,7 @@ function blake2b(seed) {
 function genIndexes(seed, height) {
   const hash = blake2b(seed);
   const extendedHash = new Uint8Array(hash.length * 2);
+  // Borrow Buffer's prototype so the Buffer-only readUIntBE() method works on this typed array.
   extendedHash.__proto__ = hash.__proto__;
   extendedHash.set(hash);
   extendedHash.set(hash, hash.length);
