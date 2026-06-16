@@ -116,17 +116,6 @@ function genIndexes(seed, height) {
   return Array.from({length: 32}).map((_, index) => extendedHash.readUIntBE(index, 4) % parseInt(N(height)))
 }
 
-// function serializeCoinbase(extraNonce1, extraNonce2){
-//   return Buffer.concat([
-//     msg,
-//     extraNonce1,
-//     extraNonce2
-//   ]);
-// };
-// const extraNonce1Buffer = Buffer.from(extraNonce1, 'hex');
-// const extraNonce2Buffer = Buffer.from(extraNonce2, 'hex');
-// const coinbaseBuffer = serializeCoinbase(extraNonce1Buffer, extraNonce2Buffer);
-
 module.exports.autolykos2_hashes = function(coinbaseBuffer, height) {
   const h = bigIntToBufferBE(BigInt(height), 4);
   const i = bigIntToBufferBE(bufferToBigIntBE(blake2b(coinbaseBuffer).slice(24, 32)) % N(height), 4);

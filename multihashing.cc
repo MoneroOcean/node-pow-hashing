@@ -425,10 +425,6 @@ void init_rx_unlocked(const uint8_t* seed_hash_data, xmrig::Algorithm::Id algo) 
 
 #define THROW_ERROR_EXCEPTION(x) Nan::ThrowError(x)
 
-void callback(char* data, void* hint) {
-    free(data);
-}
-
 using namespace v8;
 using namespace Nan;
 namespace Buffer = node::Buffer;
@@ -951,7 +947,7 @@ NAN_METHOD(kawpow) {
 
 	Local<Object> mix_hash_buff = info[2]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
 	if (!Buffer::HasInstance(mix_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 3 should be a buffer object.");
-	if (Buffer::Length(mix_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 3 should be a 8 bytes long buffer object.");
+	if (Buffer::Length(mix_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 3 should be a 32 bytes long buffer object.");
 
 	uint32_t header_hash[8];
 	memcpy(header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
