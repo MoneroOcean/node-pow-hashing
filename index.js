@@ -114,7 +114,8 @@ function genIndexes(seed, height) {
   extendedHash.__proto__ = hash.__proto__;
   extendedHash.set(hash);
   extendedHash.set(hash, hash.length);
-  return Array.from({length: 32}).map((_, index) => extendedHash.readUIntBE(index, 4) % parseInt(N(height)))
+  const modN = parseInt(N(height));
+  return Array.from({length: 32}).map((_, index) => extendedHash.readUIntBE(index, 4) % modN)
 }
 
 module.exports.autolykos2_hashes = function(coinbaseBuffer, height) {
