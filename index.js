@@ -26,8 +26,8 @@ module.exports.setRandomxCacheSize = function(size) {
   if (!Number.isInteger(size) || size < 1 || size > 256) {
     throw new RangeError("RandomX cache size must be an integer between 1 and 256");
   }
-  randomxCacheSize = size;
   if (nativeSetRandomxCacheSize) nativeSetRandomxCacheSize(size);
+  randomxCacheSize = size;
 };
 
 module.exports.getRandomxCacheSize = function() {
