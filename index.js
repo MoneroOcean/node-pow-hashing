@@ -86,19 +86,19 @@ const IncreasePeriodForN     = 50 * 1024;
 const NIncreasementHeightMax = 9216000;
 
 const N = height => {
-  height = Math.min(NIncreasementHeightMax, height);
-  if (height < IncreaseStart) {
+  const clampedHeight = Math.min(NIncreasementHeightMax, height);
+  if (clampedHeight < IncreaseStart) {
     return NBase;
-  } else if(height >= NIncreasementHeightMax){
-    return 2147387550n;
-  } else {
-    let res = NBase;
-    let iterationsNumber = Math.floor((height - IncreaseStart) / IncreasePeriodForN) + 1;
-    for (let i = 0; i < iterationsNumber; i++) {
-      res = res / BigInt(100) * BigInt(105);
-    }
-    return res;
   }
+  if (clampedHeight >= NIncreasementHeightMax) {
+    return 2147387550n;
+  }
+  let res = NBase;
+  const iterationsNumber = Math.floor((clampedHeight - IncreaseStart) / IncreasePeriodForN) + 1;
+  for (let i = 0; i < iterationsNumber; i++) {
+    res = res / BigInt(100) * BigInt(105);
+  }
+  return res;
 }
 
 function blake2b(seed) {
