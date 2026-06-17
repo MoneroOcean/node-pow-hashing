@@ -57,7 +57,7 @@ function getMethod(methodName) {
   return method;
 }
 
-async function runVectorCase({ name, file, parseLine, execute, formatActual }, options = {}) {
+async function runVectorCase({ name, file, parseLine, execute, formatActual }, _options = {}) {
   const lines = await readLines(file);
   let passed = 0;
   let failed = 0;
@@ -80,7 +80,7 @@ async function runVectorCase({ name, file, parseLine, execute, formatActual }, o
   }
 }
 
-async function runCheckCase({ name, checks }, options = {}) {
+async function runCheckCase({ name, checks }, _options = {}) {
   let passed = 0;
   let failed = 0;
 
