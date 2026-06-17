@@ -39,6 +39,7 @@
   ],
   "scripts": {
     "lint": "eslint .",
+    "pretest": "npm run lint",
     "test": "node --test --test-concurrency=1 --test-reporter=spec tests/stability.js",
     "test:perf": "node --test --test-concurrency=1 --test-reporter=spec tests/perf.js",
     "test:all": "node --test --test-concurrency=1 --test-reporter=spec tests/stability.js tests/perf.js"
