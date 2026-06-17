@@ -419,6 +419,13 @@ using namespace v8;
 using namespace Nan;
 namespace Buffer = node::Buffer;
 
+// Safely resolve an argument expected to be a Buffer. Uses ToLocal (not ToLocalChecked,
+// which aborts the process on null/undefined/non-object) so a bad argument throws a JS
+// error instead of crashing the whole Node process.
+static bool RequireBufferArg(v8::Isolate* isolate, v8::Local<v8::Value> value, v8::Local<v8::Object>& out) {
+    return value->ToObject(isolate->GetCurrentContext()).ToLocal(&out) && Buffer::HasInstance(out);
+}
+
 bool GetC29HeaderBuffer(const v8::FunctionCallbackInfo<v8::Value>& info, Local<Object>* target) {
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
@@ -489,11 +496,11 @@ NAN_METHOD(randomx) {
     if (info.Length() < 2) return THROW_ERROR_EXCEPTION("You must provide two arguments.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
-    Local<Object> seed_hash = info[1]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(seed_hash)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
+    Local<Object> seed_hash;
+    if (!RequireBufferArg(isolate, info[1], seed_hash)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
     if (Buffer::Length(seed_hash) != sizeof(rx_seed_hash[0])) return THROW_ERROR_EXCEPTION("Argument 2 size should be 32 bytes.");
 
     int algo = 0;
@@ -616,8 +623,8 @@ NAN_METHOD(cryptonight) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     int algo = 0;
     uint64_t height = 0;
@@ -652,8 +659,8 @@ NAN_METHOD(cryptonight_light) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     int algo = 0;
     uint64_t height = 0;
@@ -682,8 +689,8 @@ NAN_METHOD(cryptonight_heavy) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     int algo = 0;
     uint64_t height = 0;
@@ -713,8 +720,8 @@ NAN_METHOD(cryptonight_pico) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     int algo = 0;
 
@@ -738,8 +745,8 @@ NAN_METHOD(argon2) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
     if (Buffer::Length(target) < 16) return THROW_ERROR_EXCEPTION("Argument 1 should be at least 16 bytes.");
 
     int algo = 0;
@@ -762,8 +769,8 @@ NAN_METHOD(astrobwt) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     int algo = 0;
 
@@ -785,9 +792,8 @@ NAN_METHOD(k12) {
     if (info.Length() < 1) return THROW_ERROR_EXCEPTION("You must provide one argument.");
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-    Local<Object> target = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-
-    if (!Buffer::HasInstance(target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+    Local<Object> target;
+    if (!RequireBufferArg(isolate, info[0], target)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 
     char output[32];
     KangarooTwelve((const unsigned char *)Buffer::Data(target), Buffer::Length(target), (unsigned char *)output, 32, 0, 0);
@@ -927,21 +933,23 @@ NAN_METHOD(kawpow) {
 
 	v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
-	Local<Object> header_hash_buff = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+	Local<Object> header_hash_buff;
+	if (!RequireBufferArg(isolate, info[0], header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 	if (Buffer::Length(header_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 1 should be a 32 bytes long buffer object.");
 
-	Local<Object> nonce_buff = info[1]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
+	Local<Object> nonce_buff;
+	if (!RequireBufferArg(isolate, info[1], nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
 	if (Buffer::Length(nonce_buff) != 8) return THROW_ERROR_EXCEPTION("Argument 2 should be a 8 bytes long buffer object.");
 
-	Local<Object> mix_hash_buff = info[2]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(mix_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 3 should be a buffer object.");
+	Local<Object> mix_hash_buff;
+	if (!RequireBufferArg(isolate, info[2], mix_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 3 should be a buffer object.");
 	if (Buffer::Length(mix_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 3 should be a 32 bytes long buffer object.");
 
 	uint32_t header_hash[8];
 	memcpy(header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
-        const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
+        uint64_t nonce_le;
+        memcpy(&nonce_le, Buffer::Data(nonce_buff), sizeof(nonce_le));  // alignment-safe 8-byte read (avoids UB on strict-align archs like ARM)
+        const uint64_t nonce = __builtin_bswap64(nonce_le);
         uint32_t mix_hash[8];
 	memcpy(mix_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(mix_hash_buff)), sizeof(mix_hash));
 
@@ -957,12 +965,12 @@ NAN_METHOD(kawpow_light) {
 
 	v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
-	Local<Object> header_hash_buff = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+	Local<Object> header_hash_buff;
+	if (!RequireBufferArg(isolate, info[0], header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 	if (Buffer::Length(header_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 1 should be a 32 bytes long buffer object.");
 
-	Local<Object> nonce_buff = info[1]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
+	Local<Object> nonce_buff;
+	if (!RequireBufferArg(isolate, info[1], nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
 	if (Buffer::Length(nonce_buff) != 8) return THROW_ERROR_EXCEPTION("Argument 2 should be a 8 bytes long buffer object.");
 
 	if (!info[2]->IsUint32()) return THROW_ERROR_EXCEPTION("Argument 3 should be an unsigned 32-bit integer");
@@ -971,13 +979,16 @@ NAN_METHOD(kawpow_light) {
 
 	uint8_t header_hash[32];
 	memcpy(header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
-	const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
+	uint64_t nonce_le;
+	memcpy(&nonce_le, Buffer::Data(nonce_buff), sizeof(nonce_le));  // alignment-safe 8-byte read (avoids UB on strict-align archs like ARM)
+	const uint64_t nonce = __builtin_bswap64(nonce_le);
 
 	uint32_t output[8];
 	uint32_t mix_hash[8];
 
 	{
 		std::lock_guard<std::mutex> lock(xmrig::KPCache::s_cacheMutex);
+		try {
 		KawpowCacheLookupStats cache_stats;
 		const auto start_time = std::chrono::steady_clock::now();
 		xmrig::KPCache* cache = GetKawpowCache(epoch, cache_stats);
@@ -1007,6 +1018,9 @@ NAN_METHOD(kawpow_light) {
 				<< std::endl;
 		}
 		xmrig::KPHash::calculate(*cache, height, header_hash, nonce, output, mix_hash);
+		} catch (...) {
+			return THROW_ERROR_EXCEPTION("KawPoW light cache/hash computation failed (out of memory?)");
+		}
 	}
 
 	v8::Local<v8::Array> returnValue = v8::Array::New(isolate, 2);
@@ -1020,12 +1034,12 @@ NAN_METHOD(ethash) {
 
 	v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
-	Local<Object> header_hash_buff = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+	Local<Object> header_hash_buff;
+	if (!RequireBufferArg(isolate, info[0], header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 	if (Buffer::Length(header_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 1 should be a 32 bytes long buffer object.");
 
-	Local<Object> nonce_buff = info[1]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
+	Local<Object> nonce_buff;
+	if (!RequireBufferArg(isolate, info[1], nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
 	if (Buffer::Length(nonce_buff) != 8) return THROW_ERROR_EXCEPTION("Argument 2 should be a 8 bytes long buffer object.");
 
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
@@ -1036,7 +1050,9 @@ NAN_METHOD(ethash) {
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
-        const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
+        uint64_t nonce_le;
+        memcpy(&nonce_le, Buffer::Data(nonce_buff), sizeof(nonce_le));  // alignment-safe 8-byte read (avoids UB on strict-align archs like ARM)
+        const uint64_t nonce = __builtin_bswap64(nonce_le);
 
         ethash_return_value_t res;
         {
@@ -1063,12 +1079,12 @@ NAN_METHOD(etchash) {
 
 	v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
-	Local<Object> header_hash_buff = info[0]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
+	Local<Object> header_hash_buff;
+	if (!RequireBufferArg(isolate, info[0], header_hash_buff)) return THROW_ERROR_EXCEPTION("Argument 1 should be a buffer object.");
 	if (Buffer::Length(header_hash_buff) != 32) return THROW_ERROR_EXCEPTION("Argument 1 should be a 32 bytes long buffer object.");
 
-	Local<Object> nonce_buff = info[1]->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-	if (!Buffer::HasInstance(nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
+	Local<Object> nonce_buff;
+	if (!RequireBufferArg(isolate, info[1], nonce_buff)) return THROW_ERROR_EXCEPTION("Argument 2 should be a buffer object.");
 	if (Buffer::Length(nonce_buff) != 8) return THROW_ERROR_EXCEPTION("Argument 2 should be a 8 bytes long buffer object.");
 
         if (!info[2]->IsNumber()) return THROW_ERROR_EXCEPTION("Argument 3 should be a number");
@@ -1081,7 +1097,9 @@ NAN_METHOD(etchash) {
 
 	ethash_h256_t header_hash;
 	memcpy(&header_hash, reinterpret_cast<const uint8_t*>(Buffer::Data(header_hash_buff)), sizeof(header_hash));
-        const uint64_t nonce = __builtin_bswap64(*(reinterpret_cast<const uint64_t*>(Buffer::Data(nonce_buff))));
+        uint64_t nonce_le;
+        memcpy(&nonce_le, Buffer::Data(nonce_buff), sizeof(nonce_le));  // alignment-safe 8-byte read (avoids UB on strict-align archs like ARM)
+        const uint64_t nonce = __builtin_bswap64(nonce_le);
 
         ethash_return_value_t res;
         {
