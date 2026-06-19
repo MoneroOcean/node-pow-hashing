@@ -330,8 +330,12 @@ function getBenches(includeOptional = false) {
   return includeOptional ? defaultBenches.concat(optionalBenches) : defaultBenches;
 }
 
+function skippedNote() {
+  return `Skipped ${optionalBenches.length} legacy-only perf cases. Run 'node tests/perf.js --all' to include them.`;
+}
+
 function runRequestedBench(requestedBenchName) {
-  const bench = defaultBenches.concat(optionalBenches).find((entry) => entry.name === requestedBenchName);
+  const bench = getBenches(true).find((entry) => entry.name === requestedBenchName);
   if (!bench) {
     throw new Error(`Unknown benchmark: ${requestedBenchName}`);
   }
@@ -347,24 +351,20 @@ function runBenchmarks(includeOptional = false) {
   }
 
   if (!includeOptional && optionalBenches.length > 0) {
-    console.log(
-      `Skipped ${optionalBenches.length} legacy-only perf cases. Run 'node tests/perf.js --all' to include them.`
-    );
+    console.log(skippedNote());
   }
 }
 
 function main() {
   const includeOptional = process.argv.includes("--all");
-  const benches = includeOptional ? defaultBenches.concat(optionalBenches) : defaultBenches;
+  const benches = getBenches(includeOptional);
 
   for (const bench of benches) {
     bench.run();
   }
 
   if (!includeOptional && optionalBenches.length > 0) {
-    console.log(
-      `Skipped ${optionalBenches.length} legacy-only perf cases. Run 'node tests/perf.js --all' to include them.`
-    );
+    console.log(skippedNote());
   }
 }
 
@@ -399,9 +399,7 @@ function registerNodeTests() {
 
   if (optionalBenches.length > 0) {
     test("legacy-only perf coverage note", () => {
-      console.log(
-        `Skipped ${optionalBenches.length} legacy-only perf cases. Run 'node tests/perf.js --all' to include them.`
-      );
+      console.log(skippedNote());
     });
   }
 }
