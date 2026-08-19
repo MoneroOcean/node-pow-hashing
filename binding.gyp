@@ -96,7 +96,7 @@
                 "xmrig/crypto/randomx/vm_compiled_light.cpp",
                 "xmrig/crypto/randomx/blake2/blake2b.c",
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/randomx/blake2/blake2b_sse41.c" || echo)',
-                '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/randomx/blake2/avx2/blake2b_avx2.c" || echo)',
+                '<!@(uname -m | grep "^x86_64$" >/dev/null && (./check_cpu.sh avx2 && echo "xmrig/crypto/randomx/blake2/avx2/blake2b_avx2.c" || echo "xmrig/crypto/randomx/blake2/avx2/blake2b_avx2_stub.c") || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/randomx/jit_compiler_x86_static.S" || echo)',
                 '<!@(uname -m | grep "^x86_64$" >/dev/null && echo "xmrig/crypto/randomx/jit_compiler_x86.cpp" || echo)',
                 '<!@(uname -m | grep -E "^(arm64|aarch64)$" >/dev/null && echo "xmrig/crypto/randomx/jit_compiler_a64_static.S" || echo)',
